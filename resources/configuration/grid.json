@@ -1,11 +1,13 @@
 {
-  "timeLimit": 150000000000,
-  "domainPath": "/input/vacuum/random1k.vw",
-  "domainInstanceName": "Manual test instance",
-  "actionDuration": 10,
-  "domainName": "ORIENTATION_GRID",
-  "terminationType": "EXPANSION",
-  "algorithmName": "LSS_LRTA_STAR",
+  "algorithmName": "A_STAR",
   "lookaheadType": "DYNAMIC",
-  "commitmentStrategy": "SINGLE"
+  "actionDuration": 100000,
+  "terminationType": "TIME",
+  "timeLimit": 300000000000,
+  "commitmentStrategy": "SINGLE",
+  "heuristicMultiplier": 1.0,
+  "terminationTimeEpsilon": 5000000,
+  "weight": 1.0,
+  "domainName": "GRID_WORLD",
+  "domainPath": "uniform100_100-0.vw"
 }

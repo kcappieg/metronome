@@ -35,6 +35,26 @@ class Domain {
     }
   };
 
+  /** Possible interventions for a Goal Recognition Design problem */
+  class Intervention {
+   public:
+    std::string toString() const {
+      // TODO
+    }
+  };
+
+  /**
+   * If domain is implemented for Goal Recognition Design, Patch provides way to store interventions (modifications)
+   */
+  class Patch {
+   public:
+    std::string toString() const {
+      // TODO
+    }
+
+    // Hash? ==?
+  };
+
   Domain(const Configuration& configuration, std::istream& input) {
     // TODO
   }
@@ -72,6 +92,22 @@ class Domain {
   }
 
   bool safetyPredicate(const State& state) const {
+    // TODO
+  }
+
+  /**
+   * This method will mutate the domain
+   * @param intervention
+   * @return
+   */
+  Patch applyIntervention(const Intervention& intervention) {
+    // TODO
+  }
+
+  /**
+   * This method will mutate the domain
+   */
+  void reversePatch(const Patch&) {
     // TODO
   }
 };

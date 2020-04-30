@@ -283,7 +283,7 @@ def generate_filter_configs(domains, useVacuum):
         config['lookaheadType'] = 'DYNAMIC'
         config['commitmentStrategy'] = 'SINGLE'
         config['heuristicMultiplier'] = 1.0
-        # remove leading . char in a relative path
+        # strip leading . char from domain
         config['domainPath'] = domain[1:]
 
 #        if not useVacuum:
@@ -361,7 +361,7 @@ def main(args):
         os.makedirs(outPath)
 
     generated_domains = []
-    base_domain_name = config_type + str(height) + '_' + str(width) + '-'
+    base_domain_name = get_base_domain_name(config_type, width, height)
     for iteration in range(total):
         domain_builder.reset()
 
@@ -398,38 +398,40 @@ def main(args):
         aFile.close()
 
     if args.filter:
-        this_cwd = os.getcwd()
-
-        if args.verbose:
-            print(f'Metronome path: {args.filter}')
-
-        success_index = 0
-        
-        filtered_dir = os.path.join(outPath, 'filtered')
-        if not os.path.exists(filtered_dir):
-            os.makedirs(filtered_dir)
-        configs = generate_filter_configs(generated_domains, goals > 1)
-
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-        from Metronome import distributed_execution
-
-        if args.verbose:
-            print('Begin filtering of generated domains')
-        
-        os.chdir('../..')
-        results = distributed_execution(configs)
-        os.chdir(this_cwd)
-
-        for result in results:
-            if (result['success']):
-                print(f'Domain {result["configuration"]["domainPath"]} is solvable')
-
-                copyfile('.' + result['configuration']['domainPath'], os.path.join(filtered_dir, base_domain_name + str(success_index) + '.vw'))
-                success_index += 1
-            else:
-                print(f'Domain {result["configuration"]["domainPath"]} was not successfully solved')
+        filter_domains(generated_domains, base_domain_name, goals > 1, outPath)
 
 
+def get_base_domain_name(strategy, width, height):
+    return strategy + str(height) + '_' + str(width) + '-'
+
+
+def filter_domains(generated_domains, base_domain_name, is_vacuum, out_path='./gridworld'):
+    this_cwd = os.getcwd()
+
+    success_index = 0
+
+    filtered_dir = os.path.join(out_path, 'filtered')
+    if not os.path.exists(filtered_dir):
+        os.makedirs(filtered_dir)
+    configs = generate_filter_configs(generated_domains, is_vacuum)
+
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+    from Metronome import distributed_execution
+
+    print('Begin filtering of generated domains')
+
+    os.chdir('../..')
+    results = distributed_execution(configs, this_cwd)
+    os.chdir(this_cwd)
+
+    for result in results:
+        if (result['success']):
+            print(f'Domain {result["configuration"]["domainPath"]} is solvable')
+
+            copyfile('.' + result['configuration']['domainPath'], os.path.join(filtered_dir, base_domain_name + str(success_index) + '.vw'))
+            success_index += 1
+        else:
+            print(f'Domain {result["configuration"]["domainPath"]} was not successfully solved')
 
 
 if __name__ == '__main__':
