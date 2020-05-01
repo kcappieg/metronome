@@ -380,7 +380,7 @@ class OrientationGrid {
     bool goalIsWest = otherState.getX() < state.getX();
     bool goalIsEast = otherState.getX() > state.getX();
     // return early if we are at the goal
-    if ((goalIsNorth || goalIsSouth || goalIsWest || goalIsEast) == false) {
+    if (!(goalIsNorth || goalIsSouth || goalIsWest || goalIsEast)) {
       return static_cast<Cost>(0);
     }
 

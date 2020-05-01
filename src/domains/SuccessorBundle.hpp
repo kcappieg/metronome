@@ -19,11 +19,30 @@ class SuccessorBundle {
   const Cost actionCost;
 
     friend std::ostream& operator<<(std::ostream& os, const SuccessorBundle& bundle) {
-      os << "SuccessorBundle: state: " << bundle.state
+      os << "SuccessorBundle - state: " << bundle.state
          << ", action: " << bundle.action
          << ", cost: " << bundle.actionCost;
       return os;
     }
+};
+
+template <typename Domain>
+class InterventionBundle {
+ public:
+  typedef typename Domain::Intervention Intervention;
+  typedef typename Domain::Cost Cost;
+
+  InterventionBundle(Intervention intervention, Cost interventionCost)
+    : intervention(intervention), interventionCost(interventionCost) {}
+
+  const Intervention intervention;
+  const Cost interventionCost;
+
+  friend std::ostream& operator<<(std::ostream& os, const InterventionBundle& bundle) {
+    os << "InterventionBundle - intervention: " << bundle.intervention
+      << ", cost: " << bundle.interventionCost;
+    return os;
+  }
 };
 
 }  // namespace metronome

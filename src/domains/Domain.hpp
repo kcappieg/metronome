@@ -96,11 +96,21 @@ class Domain {
   }
 
   /**
-   * This method will mutate the domain
-   * @param intervention
+   * Allowing interventions method to take a vector of states so that we can retrieve
+   * many interventions at once
+   * @param states
    * @return
    */
-  Patch applyIntervention(const Intervention& intervention) {
+  std::vector<InterventionBundle<Domain>> interventions(const std::vector<State>& states) const {
+    // TODO
+  }
+
+  /**
+   * This method will mutate the domain
+   * @param intervention
+   * @return The patch that was applied
+   */
+  Patch applyInterventions(const std::vector<Intervention>& interventions) {
     // TODO
   }
 

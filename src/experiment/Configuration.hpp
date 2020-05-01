@@ -44,6 +44,9 @@ static const std::string LOOKAHEAD_DYNAMIC{"DYNAMIC"};
 static const std::string COMMITMENT_SINGLE{"SINGLE"};
 static const std::string COMMITMENT_MULTIPLE{"MULTIPLE"};
 
+// GRD
+static const std::string INTERVENTION_COST{"interventionCost"};
+
 // Cluster RTS
 static const std::string CLUSTER_NODE_LIMIT{"clusterNodeLimit"};
 static const std::string CLUSTER_DEPTH_LIMIT{"clusterDepthLimit"};

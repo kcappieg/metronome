@@ -119,9 +119,37 @@ class GridWorld {
     }
   };
 
+  class Intervention {
+   public:
+    Intervention(const State& state, bool isAdd) : obstacle(state), isAdd(isAdd) {}
+
+    const State obstacle;
+    /** if true, adding obstacle. if false, removing */
+    const bool isAdd;
+
+    std::size_t hash() const {
+      size_t seed = 37;
+
+      seed = (seed * 17) ^ obstacle.hash();
+      seed = (seed * 17) ^ std::hash<bool>{}(isAdd);
+      return seed;
+    }
+  };
+
+  /**
+   * Represents an atomic "patch" of one or more interventions
+   */
+  class Patch {
+   public:
+    Patch(const std::vector<Intervention> interventions) : interventions(interventions) {}
+
+    const std::vector<Intervention> interventions;
+  };
+
   /*Entry point for using this Domain*/
   GridWorld(const Configuration& configuration, std::istream& input)
       : actionDuration(configuration.getLong(ACTION_DURATION, 1)),
+        interventionCost(configuration.getLong(INTERVENTION_COST, 1)),
         heuristicMultiplier(configuration.getDouble(HEURISTIC_MULTIPLIER, 1)) {
     unsigned int currentHeight = 0;
     unsigned int currentWidth = 0;
@@ -282,6 +310,64 @@ class GridWorld {
     return successors;
   }
 
+  /**
+   * Takes a vector of states and returns all interventions applicable to those states
+   * NOTE: Only supports removing edges (adding obstacles) as of right now. Consider supporting add edges as well
+   * @param states
+   * @return
+   */
+  std::vector<InterventionBundle<GridWorld>> interventions(const std::vector<State>& states) const {
+    std::vector<InterventionBundle<GridWorld>> interventions;
+    std::unordered_set<State, metronome::Hash<State>> obstacles;
+
+    for (auto& state : states) {
+      for (auto& succ : successors(state)) {
+        obstacles.insert(succ.state);
+      }
+    }
+
+    for (auto obstacle : obstacles) {
+      interventions.emplace_back(Intervention{obstacle, true}, interventionCost);
+    }
+
+    return interventions;
+  }
+
+  /**
+   * Add / remove obstacles to the domain given the passed interventions
+   * @param interventions
+   * @return
+   */
+  Patch applyInterventions(const std::vector<Intervention>& interventions) {
+    std::vector<Intervention> applied;
+
+    for (auto& intervention : interventions) {
+      if (intervention.isAdd) {
+        obstacles.insert(intervention.obstacle);
+      } else {
+        obstacles.erase(intervention.obstacle);
+      }
+
+      applied.emplace_back(intervention);
+    }
+
+    return applied;
+  }
+
+  /**
+   * Reverses a patch by re-adding or removing obstacles
+   * @param patch
+   */
+  void reversePatch(const Patch& patch) {
+    for (auto& intervention : patch.interventions) {
+      if (!intervention.isAdd) {
+        obstacles.insert(intervention.obstacle);
+      } else {
+        obstacles.erase(intervention.obstacle);
+      }
+    }
+  }
+
   void visualize(std::ostream& display) const {
     for (unsigned int i = 0; i < height; ++i) {
       for (unsigned int j = 0; j < width; ++j) {
@@ -354,6 +440,7 @@ class GridWorld {
   State startLocation{};
   State goalLocation{};
   const Cost actionDuration;
+  const Cost interventionCost;
   const double heuristicMultiplier;
 };
 
