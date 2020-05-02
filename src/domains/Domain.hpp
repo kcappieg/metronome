@@ -53,6 +53,12 @@ class Domain {
     }
 
     // Hash? ==?
+
+    /**
+     * Dynamic algorithms sometimes receive information on which states were affected.
+     * This property provides that information for a given intervention
+     */
+    const std::vector<State> affectedStates;
   };
 
   Domain(const Configuration& configuration, std::istream& input) {
@@ -64,6 +70,10 @@ class Domain {
   }
 
   bool isGoal(const State& location) const {
+    // TODO
+  }
+
+  std::vector<State> getGoals() const {
     // TODO
   }
 

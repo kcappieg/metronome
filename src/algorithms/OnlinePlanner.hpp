@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 #include "Planner.hpp"
 #include "experiment/termination/TimeTerminationChecker.hpp"
 

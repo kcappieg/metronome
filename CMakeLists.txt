@@ -60,7 +60,7 @@ set(SOURCE_FILES
         src/utils/ObjectPool.hpp
         src/MemoryConfiguration.hpp
 #		src/utils/BucketPriorityQueue.hpp
-		src/domains/DynamicGridWorld.hpp)
+		src/domains/DynamicGridWorld.hpp src/algorithms/GoalRecognitionDesignPlanner.hpp)
 
 set(TEST_FILES
         test/test.cpp

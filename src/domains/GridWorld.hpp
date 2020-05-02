@@ -141,9 +141,11 @@ class GridWorld {
    */
   class Patch {
    public:
-    Patch(const std::vector<Intervention> interventions) : interventions(interventions) {}
+    Patch(const std::vector<Intervention> interventions, const std::vector<State> affectedStates)
+      : interventions(interventions), affectedStates(affectedStates) {}
 
     const std::vector<Intervention> interventions;
+    const std::vector<State> affectedStates;
   };
 
   /*Entry point for using this Domain*/
@@ -172,14 +174,13 @@ class GridWorld {
     convertHeight >> height;
 
     std::optional<State> tempStarState;
-    std::optional<State> tempGoalState;
 
     while (getline(input, line) && currentHeight < height) {
       for (char it : line) {
         if (it == '@') {  // find the start location
           tempStarState = State(currentWidth, currentHeight);
-        } else if (it == '*') {  // find the goal location
-          tempGoalState = State(currentWidth, currentHeight);
+        } else if (it == '*') {  // found a goal location
+          goalLocations.insert(State(currentWidth, currentHeight));
         } else if (it == '#') {  // store the objects
           State object = State(currentWidth, currentHeight);
           obstacles.insert(object);
@@ -197,7 +198,7 @@ class GridWorld {
       }
 
       currentWidth = 0;  // restart character parse at beginning of line
-      ++currentHeight;   // move down one line in charadter parse
+      ++currentHeight;   // move down one line in character parse
     }
 
     if (currentHeight != height) {
@@ -206,14 +207,17 @@ class GridWorld {
           "configuration.");
     }
 
-    if (!tempStarState.has_value() || !tempGoalState.has_value()) {
+    if (!tempStarState.has_value() || goalLocations.size() == 0) {
       throw MetronomeException(
-          "Traffic unknown start or goal location. Start or goal location is "
+          "GridWorld unknown start or goal location. Start or goal location is "
           "not defined.");
     }
 
     startLocation = tempStarState.value();
-    goalLocation = tempGoalState.value();
+    // If only 1 goal, set the singleGoal property for convenience
+    if (goalLocations.size() == 1) {
+      singleGoal = *goalLocations.cbegin();
+    }
   }
 
   /**
@@ -235,8 +239,11 @@ class GridWorld {
 
   /*Validating a goal state*/
   bool isGoal(const State& location) const {
-    return location.getX() == goalLocation.getX() &&
-           location.getY() == goalLocation.getY();
+    return goalLocations.count(location) > 0;
+  }
+
+  std::vector<State> getGoals() const {
+    return std::vector<State>(goalLocations.cbegin(), goalLocations.cend());
   }
 
   /*Validating an obstacle state*/
@@ -285,7 +292,11 @@ class GridWorld {
   }
 
   Cost distance(const State& state) const {
-    return distance(state, goalLocation);
+    if (goalLocations.size() == 1) {
+      return distance(state, singleGoal);
+    } else {
+      throw MetronomeException("Goal ambiguous - Distance function invoked with implicit goal, but goal set is greater than one.");
+    }
   }
 
   Cost heuristic(const State& state) const {
@@ -318,15 +329,16 @@ class GridWorld {
    */
   std::vector<InterventionBundle<GridWorld>> interventions(const std::vector<State>& states) const {
     std::vector<InterventionBundle<GridWorld>> interventions;
-    std::unordered_set<State, metronome::Hash<State>> obstacles;
+    std::unordered_set<State, metronome::Hash<State>> newObstacles;
 
     for (auto& state : states) {
       for (auto& succ : successors(state)) {
-        obstacles.insert(succ.state);
+        newObstacles.insert(succ.state);
       }
     }
 
-    for (auto obstacle : obstacles) {
+    interventions.reserve(newObstacles.size());
+    for (auto obstacle : newObstacles) {
       interventions.emplace_back(Intervention{obstacle, true}, interventionCost);
     }
 
@@ -334,24 +346,31 @@ class GridWorld {
   }
 
   /**
-   * Add / remove obstacles to the domain given the passed interventions
+   * Add / remove obstacles to the domain given the passed interventions.
+   * The patch includes all states adjacent to the obstacle as well as the obstacle
+   * state itself in the affectedStates property
    * @param interventions
    * @return
    */
   Patch applyInterventions(const std::vector<Intervention>& interventions) {
     std::vector<Intervention> applied;
+    std::vector<State> affected;
 
     for (auto& intervention : interventions) {
       if (intervention.isAdd) {
-        obstacles.insert(intervention.obstacle);
+        addObstacle(intervention.obstacle);
       } else {
         obstacles.erase(intervention.obstacle);
       }
 
       applied.emplace_back(intervention);
+      affected.emplace_back(intervention.obstacle);
+      for (auto& bundle : successors(intervention.obstacle)) {
+        affected.emplace_back(bundle.state);
+      }
     }
 
-    return applied;
+    return {applied, affected};
   }
 
   /**
@@ -373,7 +392,7 @@ class GridWorld {
       for (unsigned int j = 0; j < width; ++j) {
         if (startLocation.getX() == j && startLocation.getY() == i) {
           display << '@';
-        } else if (goalLocation.getX() == j && goalLocation.getY() == i) {
+        } else if (goalLocations.count({j, i}) > 0) {
           display << '*';
         } else if (isObstacle(State(j, i))) {
           display << '#';
@@ -438,7 +457,8 @@ class GridWorld {
   unsigned int height;
   std::unordered_set<State, typename metronome::Hash<State>> obstacles;
   State startLocation{};
-  State goalLocation{};
+  std::unordered_set<State, typename metronome::Hash<State>> goalLocations;
+  State singleGoal{};
   const Cost actionDuration;
   const Cost interventionCost;
   const double heuristicMultiplier;
