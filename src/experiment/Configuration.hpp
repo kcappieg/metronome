@@ -23,6 +23,7 @@ static const std::string LOOKAHEAD_TYPE{"lookaheadType"};
 static const std::string COMMITMENT_STRATEGY{"commitmentStrategy"};
 static const std::string HEURISTIC_MULTIPLIER{"heuristicMultiplier"};
 
+// Domains
 static const std::string DOMAIN_GRID_WORLD{"GRID_WORLD"};
 static const std::string DOMAIN_DYNAMIC_GRID_WORLD{"DYNAMIC_GRID_WORLD"};
 static const std::string DOMAIN_ORIENTATION_GRID{"ORIENTATION_GRID"};
@@ -30,10 +31,19 @@ static const std::string DOMAIN_VACUUM_WORLD{"VACUUM_WORLD"};
 static const std::string DOMAIN_TRAFFIC{"TRAFFIC"};
 static const std::string DOMAIN_TILES{"SLIDING_TILE_PUZZLE"};
 
+// Offline algs
 static const std::string ALGORITHM_A_STAR{"A_STAR"};
+
+// Realtime algs
 static const std::string ALGORITHM_LSS_LRTA_STAR{"LSS_LRTA_STAR"};
 static const std::string ALGORITHM_CLUSTER_RTS{"CLUSTER_RTS"};
 static const std::string ALGORITHM_TIME_BOUNDED_A_STAR{"TIME_BOUNDED_A_STAR"};
+
+// GRD algs
+static const std::string GRD_ALGORITHM_TRIVIAL{"TRIVIAL_GRD"};
+
+// Dynamic algs
+static const std::string ALGORITHM_NAIVE_DYNAMIC{"NAIVE_DYNAMIC"};
 
 static const std::string TERMINATION_CHECKER_TIME{"TIME"};
 static const std::string TERMINATION_CHECKER_EXPANSION{"EXPANSION"};
@@ -46,6 +56,7 @@ static const std::string COMMITMENT_MULTIPLE{"MULTIPLE"};
 
 // GRD
 static const std::string INTERVENTION_COST{"interventionCost"};
+static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
 // Cluster RTS
 static const std::string CLUSTER_NODE_LIMIT{"clusterNodeLimit"};

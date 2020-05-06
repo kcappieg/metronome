@@ -34,6 +34,8 @@
 
 #ifdef ENABLE_A_STAR
 #include "algorithms/AStar.hpp"
+#include "GrdExperiment.hpp"
+
 #endif
 #ifdef ENABLE_LSS_LRTA_STAR
 #include "algorithms/LssLrtaStar.hpp"
@@ -46,6 +48,9 @@
 #endif
 #ifdef ENABLE_TIME_BOUNDED_A_STAR_KEVIN
 #include "algorithms/TBAStar.hpp"
+#endif
+#ifdef ENABLE_TRIVIAL_GRD
+#include "algorithms/TrivialGrdPlanner.hpp"
 #endif
 
 namespace metronome {
@@ -209,6 +214,15 @@ class ConfigurationExecutor {
     }
 #endif
 
+#ifdef ENABLE_TRIVIAL_GRD
+    if (algorithmName == GRD_ALGORITHM_TRIVIAL) {
+      LOG(INFO) << "Trivial GRD. Detecting Subject algorithm";
+      return executeGoalRecognitionDesignPlanner<
+              Domain, TrivialGrdPlanner<Domain>, AStar<Domain>>(
+                      configuration, domain);
+    }
+#endif
+
     LOG(ERROR) << "Unknown algorithms name: " << algorithmName << std::endl;
     return Result(configuration, "Unknown: algorithmName: " + algorithmName);
   }
@@ -262,6 +276,20 @@ class ConfigurationExecutor {
 
     LOG(INFO) << "Configuration done.";
     return realTimePlanManager.plan(configuration, domain, planner);
+  }
+
+  template<typename Domain, typename GrdPlanner, typename SubjectPlanner>
+  static Result executeGoalRecognitionDesignPlanner(const Configuration& configuration,
+                                                    const Domain& domain) {
+    GrdPlanner planner(domain, configuration);
+    SubjectPlanner subjectPlanner(domain, configuration);
+    // init GRD Experiment
+    GrdExperiment<Domain, GrdPlanner, SubjectPlanner> grdPlanManager(configuration);
+
+    LOG(INFO) << "Configuration done.";
+
+    // return result
+    return grdPlanManager.plan(configuration, domain, planner, subjectPlanner);
   }
 };
 

@@ -121,17 +121,23 @@ class GridWorld {
 
   class Intervention {
    public:
-    Intervention(const State& state, bool isAdd) : obstacle(state), isAdd(isAdd) {}
+    enum Type {
+      ADD,
+      REMOVE,
+      IDENTITY
+    };
+
+    Intervention(const State& state, Type interventionType) : obstacle(state), interventionType(interventionType) {}
 
     const State obstacle;
     /** if true, adding obstacle. if false, removing */
-    const bool isAdd;
+    const Type interventionType;
 
     std::size_t hash() const {
       size_t seed = 37;
 
       seed = (seed * 17) ^ obstacle.hash();
-      seed = (seed * 17) ^ std::hash<bool>{}(isAdd);
+      seed = (seed * 17) ^ std::hash<int>{}(interventionType);
       return seed;
     }
   };
@@ -321,6 +327,8 @@ class GridWorld {
     return successors;
   }
 
+  // GRD-supporting Methods
+
   /**
    * Takes a vector of states and returns all interventions applicable to those states
    * NOTE: Only supports removing edges (adding obstacles) as of right now. Consider supporting add edges as well
@@ -339,9 +347,11 @@ class GridWorld {
 
     interventions.reserve(newObstacles.size());
     for (auto obstacle : newObstacles) {
-      interventions.emplace_back(Intervention{obstacle, true}, interventionCost);
+      interventions.emplace_back(Intervention{obstacle, Intervention::Type::REMOVE}, interventionCost);
     }
 
+    // Identify intervention - does nothing
+    interventions.emplace_back(getIdentityIntervention(), interventionCost);
     return interventions;
   }
 
@@ -357,10 +367,13 @@ class GridWorld {
     std::vector<State> affected;
 
     for (auto& intervention : interventions) {
-      if (intervention.isAdd) {
+      if (intervention.interventionType == Intervention::Type::ADD) {
         addObstacle(intervention.obstacle);
-      } else {
+      } else if (intervention.interventionType == Intervention::Type::REMOVE) {
         obstacles.erase(intervention.obstacle);
+      } else if (intervention.interventionType == Intervention::Type::IDENTITY) {
+        // ignore identity
+        continue;
       }
 
       applied.emplace_back(intervention);
@@ -379,11 +392,12 @@ class GridWorld {
    */
   void reversePatch(const Patch& patch) {
     for (auto& intervention : patch.interventions) {
-      if (!intervention.isAdd) {
+      if (intervention.interventionType == Intervention::Type::REMOVE) {
         obstacles.insert(intervention.obstacle);
-      } else {
+      } else if (intervention.interventionType == Intervention::Type::ADD) {
         obstacles.erase(intervention.obstacle);
       }
+      // ignore identity
     }
   }
 
@@ -409,6 +423,11 @@ class GridWorld {
   Cost getActionDuration(const Action& action) const { return actionDuration; }
 
   Action getIdentityAction() const { return Action('0'); }
+
+  Intervention getIdentityIntervention() const {
+    return Intervention({}, Intervention::IDENTITY);
+  }
+
 
   unsigned int getWidth() { return width; }
   unsigned int getHeight() { return height; }

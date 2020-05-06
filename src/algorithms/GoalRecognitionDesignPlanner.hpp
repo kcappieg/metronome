@@ -51,11 +51,13 @@ namespace metronome {
       return os;
     }
 
-    virtual ~GoalRecognitionDesignPlanner() = default;
+    virtual ~GoalRecognitionDesignPlanner() override = default;
     virtual std::vector<typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle> selectInterventions(
-            const typename Domain::State& subjectState
+            const typename Domain::State& subjectState, const Domain& currentDomain
     ) = 0;
   };
+
+  // TODO: Possibly add attribute tracking
 
 } // namespace metronome
 
