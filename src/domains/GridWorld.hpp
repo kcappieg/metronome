@@ -254,6 +254,10 @@ class GridWorld {
     }
   }
 
+  bool isGoal(const State& location, const State& goalLocation) const {
+    return location == goalLocation;
+  }
+
   const std::vector<State> getGoals() const {
     return goalVector;
   }

@@ -24,6 +24,8 @@ namespace metronome {
     std::vector<InterventionBundle> selectInterventions(
             const typename Domain::State& subjectState, const Domain& systemState
     ) override {
+      GoalRecognitionDesignPlanner<Domain>::beginIteration();
+
       // Depends on identity intervention function being available
       Intervention inter = systemState.getIdentityIntervention();
       return {{inter, 1}};

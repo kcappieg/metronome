@@ -73,6 +73,17 @@ class Domain {
     // TODO
   }
 
+  /**
+   * In multiple goal situations, implement this function to check if a state is
+   * a specific goal
+   * @param location
+   * @param goalLocation
+   * @return
+   */
+  bool isGoal(const State& location, const State& goalLocation) const {
+    // TODO
+  }
+
   std::vector<State> getGoals() const {
     // TODO
   }
@@ -106,6 +117,23 @@ class Domain {
   }
 
   bool safetyPredicate(const State& state) const {
+    // TODO
+  }
+
+  // GRD-supporting methods
+
+  /**
+ * Set the goal to be used for subject planners
+ * @param goal
+ */
+  void setCurrentGoal(State goal) {
+    // TODO
+  }
+
+  /**
+   * Clear the subject goal so that the isGoal function can work for multiple goals
+   */
+  void clearCurrentGoal() {
     // TODO
   }
 
