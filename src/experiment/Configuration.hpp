@@ -22,6 +22,7 @@ static const std::string TIME_LIMIT{"timeLimit"};
 static const std::string LOOKAHEAD_TYPE{"lookaheadType"};
 static const std::string COMMITMENT_STRATEGY{"commitmentStrategy"};
 static const std::string HEURISTIC_MULTIPLIER{"heuristicMultiplier"};
+static const std::string SEED("seed");
 
 // Domains
 static const std::string DOMAIN_GRID_WORLD{"GRID_WORLD"};
@@ -56,6 +57,7 @@ static const std::string COMMITMENT_MULTIPLE{"MULTIPLE"};
 
 // GRD
 static const std::string INTERVENTION_COST{"interventionCost"};
+static const std::string GOAL_PRIORS{"goalPriors"};
 static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
 // Cluster RTS

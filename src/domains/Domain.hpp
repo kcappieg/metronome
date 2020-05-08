@@ -97,6 +97,10 @@ class Domain {
     // TODO
   }
 
+  Cost getActionDuration(const Action& action) const {
+    // TODO
+  }
+
   Action getIdentityAction() const {
     // TODO
   }

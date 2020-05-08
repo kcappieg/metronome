@@ -60,7 +60,7 @@ set(SOURCE_FILES
         src/utils/ObjectPool.hpp
         src/MemoryConfiguration.hpp
 #		src/utils/BucketPriorityQueue.hpp
-		src/domains/DynamicGridWorld.hpp src/algorithms/GoalRecognitionDesignPlanner.hpp src/experiment/GrdExperiment.hpp src/algorithms/TrivialGrdPlanner.hpp src/algorithms/DynamicPlanner.hpp src/algorithms/NaiveDynamicAStar.h)
+		src/domains/DynamicGridWorld.hpp src/algorithms/GoalRecognitionDesignPlanner.hpp src/experiment/GrdExperiment.hpp src/algorithms/TrivialGrdPlanner.hpp src/algorithms/DynamicPlanner.hpp src/algorithms/NaiveDynamicAStar.hpp)
 
 set(TEST_FILES
         test/test.cpp
@@ -98,6 +98,7 @@ add_definitions(-DENABLE_A_STAR)
 #add_definitions(-DENABLE_TIME_BOUNDED_A_STAR_BENCE)
 #add_definitions(-DENABLE_TIME_BOUNDED_A_STAR_KEVIN)
 add_definitions(-DENABLE_TRIVIAL_GRD)
+add_definitions(-DENABLE_NAIVE_DYNAMIC)
 
 # Select the possible domains
 add_definitions(-DENABLE_GRID_WORLD)

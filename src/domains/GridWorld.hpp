@@ -187,6 +187,7 @@ class GridWorld {
           tempStarState = State(currentWidth, currentHeight);
         } else if (it == '*') {  // found a goal location
           goalLocations.insert(State(currentWidth, currentHeight));
+          goalLocations.emplace(currentWidth, currentHeight);
         } else if (it == '#') {  // store the objects
           State object = State(currentWidth, currentHeight);
           obstacles.insert(object);
@@ -220,8 +221,9 @@ class GridWorld {
     }
 
     startLocation = tempStarState.value();
-    // If only 1 goal, set the singleGoal property for convenience
+    // If only 1 goal, set the singleGoal property
     if (goalLocations.size() == 1) {
+      useSingleGoal = true;
       singleGoal = *goalLocations.cbegin();
     }
   }
@@ -245,11 +247,15 @@ class GridWorld {
 
   /*Validating a goal state*/
   bool isGoal(const State& location) const {
-    return goalLocations.count(location) > 0;
+    if (useSingleGoal) {
+      return singleGoal == location;
+    } else {
+      return goalLocations.count(location) > 0;
+    }
   }
 
-  std::vector<State> getGoals() const {
-    return std::vector<State>(goalLocations.cbegin(), goalLocations.cend());
+  const std::vector<State> getGoals() const {
+    return goalVector;
   }
 
   /*Validating an obstacle state*/
@@ -328,6 +334,22 @@ class GridWorld {
   }
 
   // GRD-supporting Methods
+
+  /**
+   * Set the goal to be used for subject planners
+   * @param goal
+   */
+  void setCurrentGoal(State goal) {
+    singleGoal = goal;
+    useSingleGoal = true;
+  }
+
+  /**
+   * Clear the subject goal so that the isGoal function can work for multiple goals
+   */
+  void clearCurrentGoal() {
+    useSingleGoal = false;
+  }
 
   /**
    * Takes a vector of states and returns all interventions applicable to those states
@@ -477,6 +499,10 @@ class GridWorld {
   std::unordered_set<State, typename metronome::Hash<State>> obstacles;
   State startLocation{};
   std::unordered_set<State, typename metronome::Hash<State>> goalLocations;
+  /** vector separate from goalLocations to guarantee deterministic ordering when returned in instance method */
+  std::vector<State> goalVector;
+  /** When true, uses a single goal (specified by singleGoal) even if there are multiple goals registered */
+  bool useSingleGoal = false;
   State singleGoal{};
   const Cost actionDuration;
   const Cost interventionCost;

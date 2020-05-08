@@ -50,7 +50,7 @@ class RealTimeExperiment : Experiment<Domain, Planner> {
               const Domain& domain,
               Planner& planner) {
     using namespace std::chrono;
-    //    LOG(INFO) << "Begin real-time planning iterations";
+    LOG(INFO) << "Begin real-time planning iterations";
 
     std::vector<typename Domain::Action> actions;
 

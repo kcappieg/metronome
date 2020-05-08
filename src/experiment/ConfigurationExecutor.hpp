@@ -52,6 +52,9 @@
 #ifdef ENABLE_TRIVIAL_GRD
 #include "algorithms/TrivialGrdPlanner.hpp"
 #endif
+#ifdef ENABLE_NAIVE_DYNAMIC
+#include "algorithms/NaiveDynamicAStar.hpp"
+#endif
 
 namespace metronome {
 
@@ -216,9 +219,9 @@ class ConfigurationExecutor {
 
 #ifdef ENABLE_TRIVIAL_GRD
     if (algorithmName == GRD_ALGORITHM_TRIVIAL) {
-      LOG(INFO) << "Trivial GRD. Detecting Subject algorithm";
-      return executeGoalRecognitionDesignPlanner<
-              Domain, TrivialGrdPlanner<Domain>, AStar<Domain>>(
+      LOG(INFO) << "Trivial GRD";
+
+      return executeGoalRecognitionDesignPlanner<Domain, TrivialGrdPlanner<Domain>>(
                       configuration, domain);
     }
 #endif
@@ -278,18 +281,24 @@ class ConfigurationExecutor {
     return realTimePlanManager.plan(configuration, domain, planner);
   }
 
-  template<typename Domain, typename GrdPlanner, typename SubjectPlanner>
+  template<typename Domain, typename GrdPlanner>
   static Result executeGoalRecognitionDesignPlanner(const Configuration& configuration,
                                                     const Domain& domain) {
     GrdPlanner planner(domain, configuration);
-    SubjectPlanner subjectPlanner(domain, configuration);
-    // init GRD Experiment
-    GrdExperiment<Domain, GrdPlanner, SubjectPlanner> grdPlanManager(configuration);
 
-    LOG(INFO) << "Configuration done.";
+    auto subjectAlgorithm = configuration.getString(SUBJECT_ALGORITHM);
 
-    // return result
-    return grdPlanManager.plan(configuration, domain, planner, subjectPlanner);
+    LOG(INFO) << "Finding subject algorithm from configuration" << std::endl;
+
+#ifdef ENABLE_NAIVE_DYNAMIC
+    if (subjectAlgorithm == ALGORITHM_NAIVE_DYNAMIC) {
+      GrdExperiment<Domain, GrdPlanner, NaiveDynamicAStar<Domain>> grdPlanManager(configuration);
+      return grdPlanManager.plan(configuration, domain, planner);
+    }
+#endif
+
+    LOG(ERROR) << "Unknown Subject algorithm: " << subjectAlgorithm << std::endl;
+    return Result(configuration, "Unknown Subject algorithm: " + subjectAlgorithm);
   }
 };
 
