@@ -140,6 +140,24 @@ class GridWorld {
       seed = (seed * 17) ^ std::hash<int>{}(interventionType);
       return seed;
     }
+
+    friend std::ostream& operator<<(std::ostream& stream, const GridWorld::Intervention& intervention) {
+      std::ostringstream interventionStr;
+      switch(intervention.interventionType) {
+        case ADD:
+          interventionStr << "Add obstacle " << intervention.obstacle;
+          break;
+        case REMOVE:
+          interventionStr << "Remove obstacle " << intervention.obstacle;
+          break;
+        case IDENTITY:
+          interventionStr << "Identity";
+          break;
+      }
+
+      stream << interventionStr.str();
+      return stream;
+    }
   };
 
   /**
@@ -269,8 +287,8 @@ class GridWorld {
 
   /*Validating the agent can visit the state*/
   bool isLegalLocation(const State& state) const {
-    return state.getX() < width && state.getX() >= 0 && state.getY() < height &&
-           state.getY() >= 0 && !isObstacle(state);
+    return state.getX() < width && state.getY() < height
+           && !isObstacle(state);
   }
 
   /*Standard getters for the (width,height) of the domain*/
@@ -446,7 +464,7 @@ class GridWorld {
   }
 
   Cost getActionDuration() const { return actionDuration; }
-  Cost getActionDuration(const Action& action) const { return actionDuration; }
+  Cost getActionDuration(const Action&) const { return actionDuration; }
 
   Action getIdentityAction() const { return Action('0'); }
 

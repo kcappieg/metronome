@@ -12,13 +12,22 @@
 namespace metronome {
 class Visualizer {
  public:
-  void addNode(std::size_t nodeId,
-               std::size_t x = 0,
-               std::size_t y = 0,
-               std::size_t z = 1,
-               double size = 1,
-               const std::string& label = "") {
+#ifndef STREAM_GRAPH
+  void addNode(std::size_t){}
+  void addNode(std::size_t,
+               std::size_t,
+               std::size_t,
+               std::size_t,
+               double,
+               const std::string&) {
+#endif
 #ifdef STREAM_GRAPH
+  void addNode(std::size_t nodeId,
+             std::size_t x = 0,
+             std::size_t y = 0,
+             std::size_t z = 1,
+             double size = 1,
+             const std::string& label = "") {
     std::ostringstream commandBuilder;
 
     bool alreadyVisualized = nodeIds.find(nodeId) != edgeIds.end();
@@ -48,8 +57,11 @@ class Visualizer {
 #endif
   }
 
-  void removeNode(std::size_t nodeId) {
+#ifndef STREAM_GRAPH
+  void removeNode(std::size_t) {
+#endif
 #ifdef STREAM_GRAPH
+  void removeNode(std::size_t nodeId) {
     std::ostringstream commandBuilder;
 
     bool alreadyVisualized = nodeIds.find(nodeId) != edgeIds.end();
@@ -62,13 +74,21 @@ class Visualizer {
     commands.push_back(commandBuilder.str());
 #endif
   }
-  
-  void addEdge(std::size_t edgeId,
-               std::size_t sourceNodeId,
-               std::size_t targetNodeId,
-               std::string label = "",
-               double weight = 1) {
+
+#ifndef STREAM_GRAPH
+  void addEdge(std::size_t,
+               std::size_t,
+               std::size_t,
+               std::string,
+               double) {
+#endif
+
 #ifdef STREAM_GRAPH
+  void addEdge(std::size_t edgeId,
+             std::size_t sourceNodeId,
+             std::size_t targetNodeId,
+             std::string label = "",
+             double weight = 1) {
     std::ostringstream commandBuilder;
 
     bool alreadyVisualized = edgeIds.find(edgeId) != edgeIds.end();

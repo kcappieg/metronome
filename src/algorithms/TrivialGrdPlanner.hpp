@@ -22,13 +22,17 @@ namespace metronome {
     TrivialGrdPlanner(const Domain&, const Configuration&){}
 
     std::vector<InterventionBundle> selectInterventions(
-            const typename Domain::State& subjectState, const Domain& systemState
+            const typename Domain::State&, const Domain& systemState
     ) override {
       GoalRecognitionDesignPlanner<Domain>::beginIteration();
 
       // Depends on identity intervention function being available
       Intervention inter = systemState.getIdentityIntervention();
       return {{inter, 1}};
+    }
+
+    InterventionBundle getIdentityIntervention(const Domain& systemState) const override {
+      return {systemState.getIdentityIntervention(), 1};
     }
   };
 

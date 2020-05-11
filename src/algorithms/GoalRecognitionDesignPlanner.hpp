@@ -54,7 +54,7 @@ namespace metronome {
 
     virtual ~GoalRecognitionDesignPlanner() override = default;
     virtual std::vector<typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle> selectInterventions(
-            const typename Domain::State& subjectState, const Domain& currentDomain
+            const typename Domain::State& subjectState, const Domain& systemState
     ) = 0;
 
     // Attributes / Iterations
@@ -98,6 +98,12 @@ namespace metronome {
 
       return attributes;
     }
+
+    /**
+     * Must be implemented so that experiment runner can handle situation where the
+     * GRD planner does not return any interventions.
+     */
+    virtual InterventionBundle getIdentityIntervention(const Domain& systemState) const = 0;
 
   private:
     std::vector<std::unordered_map<std::string, std::int64_t>>

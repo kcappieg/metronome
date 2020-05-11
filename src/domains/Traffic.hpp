@@ -461,12 +461,12 @@ class Traffic {
       unsigned int newXLocation = curObstacle.getX() + xVelocity;
       unsigned int newYLocation = curObstacle.getY() + yVelocity;
 
-      if (newXLocation > width - 1 || newXLocation < 0) {
+      if (newXLocation > width - 1) {
         xVelocity *= -1;
         newXLocation = curObstacle.getX();  // + xVelocity;
       }
 
-      if (newYLocation > height - 1 || newYLocation <= 0) {
+      if (newYLocation > height - 1 || newYLocation == 0) {
         yVelocity *= -1;
         newYLocation = curObstacle.getY();  // + yVelocity;
       }
