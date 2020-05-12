@@ -18,13 +18,17 @@ __author__ = 'Kevin C. Gall'
 #   around 10% solvable
 
 
-def generate_goals(goals, width, height):
+def generate_goals(goals, width, height, start):
     goal_set = set()
     if goals > 1:
         while len(goal_set) < goals:
-            goal_set.add((random.randint(0, width), random.randint(0, height)))
+            goal = (random.randint(0, width-1), random.randint(0, height-1))
+            if goal != start:
+                goal_set.add(goal)
     else:
         goal_set.add((width - 2, height - 2))
+
+    print(goal_set)
 
     return goal_set
 
@@ -36,7 +40,7 @@ class SingleObstacleStrategy:
         self.probability = probability
 
     def generate_goals(self, goals):
-        return generate_goals(goals, self.width, self.height)
+        return generate_goals(goals, self.width, self.height, self.get_start())
 
     def get_obstacles(self):
         obstacle_locations = set()
@@ -66,7 +70,7 @@ class EnclosureObstacleStrategy:
         self.directions = self.get_directions() if alignDirections else None
 
     def generate_goals(self, goals):
-        return generate_goals(goals, self.width, self.height)
+        return generate_goals(goals, self.width, self.height, self.get_start())
 
     def get_directions(self):
         firstVector = dict()
@@ -382,6 +386,8 @@ def main(args):
             for x in range(0, width):
                 if (x == start_x) and (y == start_y):
                     world += '@'
+                    if (x, y) in goal_set:
+                        raise Exception('Goal in same space as start')
                 elif (x, y) in goal_set:
                     world += '*'
                 elif (x, y) in obstacle_locations:
@@ -431,6 +437,7 @@ def filter_domains(generated_domains, base_domain_name, is_vacuum, out_path='./g
             copyfile('.' + result['configuration']['domainPath'], os.path.join(filtered_dir, base_domain_name + str(success_index) + '.vw'))
             success_index += 1
         else:
+            print(result['errorMessage'])
             print(f'Domain {result["configuration"]["domainPath"]} was not successfully solved')
 
 

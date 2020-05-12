@@ -23,7 +23,7 @@ class AStar final : public OfflinePlanner<Domain> {
   using Planner = metronome::Planner<Domain>;
   
  public:
-  AStar(const Domain& domain, const Configuration&)
+  AStar(const Domain& domain, const Configuration& = {})
       : domain(domain), openList(Memory::OPEN_LIST_SIZE, fValueComparator) {
     // Initialize hash table
     nodes.max_load_factor(1);

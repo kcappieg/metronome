@@ -128,6 +128,7 @@ class GridWorld {
     };
 
     Intervention(const State& state, Type interventionType) : obstacle(state), interventionType(interventionType) {}
+    Intervention(): obstacle{}, interventionType(IDENTITY) {}
 
     const State obstacle;
     /** if true, adding obstacle. if false, removing */
@@ -165,10 +166,10 @@ class GridWorld {
    */
   class Patch {
    public:
-    Patch(const std::vector<Intervention> interventions, const std::vector<State> affectedStates)
-      : interventions(interventions), affectedStates(affectedStates) {}
+    Patch(const Intervention intervention = {}, const std::vector<State> affectedStates = {})
+      : intervention(intervention), affectedStates(affectedStates) {}
 
-    const std::vector<Intervention> interventions;
+    const Intervention intervention;
     const std::vector<State> affectedStates;
   };
 
@@ -204,8 +205,8 @@ class GridWorld {
         if (it == '@') {  // find the start location
           tempStarState = State(currentWidth, currentHeight);
         } else if (it == '*') {  // found a goal location
-          goalLocations.insert(State(currentWidth, currentHeight));
           goalLocations.emplace(currentWidth, currentHeight);
+          goalVector.emplace_back(currentWidth, currentHeight);
         } else if (it == '#') {  // store the objects
           State object = State(currentWidth, currentHeight);
           obstacles.insert(object);
@@ -400,49 +401,54 @@ class GridWorld {
   }
 
   /**
-   * Add / remove obstacles to the domain given the passed interventions.
+   * Add / remove obstacles to the domain given the passed intervention.
    * The patch includes all states adjacent to the obstacle as well as the obstacle
    * state itself in the affectedStates property
-   * @param interventions
-   * @return
+   * @param intervention
+   * @param subjectState Current state of subject (checks legal interventions)
+   * @return Optional Patch. If blank, the
    */
-  Patch applyInterventions(const std::vector<Intervention>& interventions) {
-    std::vector<Intervention> applied;
+  std::optional<Patch> applyIntervention(const Intervention& intervention, const State& subjectState) {
     std::vector<State> affected;
 
-    for (auto& intervention : interventions) {
-      if (intervention.interventionType == Intervention::Type::ADD) {
-        addObstacle(intervention.obstacle);
-      } else if (intervention.interventionType == Intervention::Type::REMOVE) {
-        obstacles.erase(intervention.obstacle);
-      } else if (intervention.interventionType == Intervention::Type::IDENTITY) {
-        // ignore identity
-        continue;
-      }
-
-      applied.emplace_back(intervention);
-      affected.emplace_back(intervention.obstacle);
-      for (auto& bundle : successors(intervention.obstacle)) {
-        affected.emplace_back(bundle.state);
-      }
+    // ignore identity
+    if (intervention.interventionType == Intervention::Type::IDENTITY) {
+      return std::optional{Patch({}, {})};
     }
 
-    return {applied, affected};
+    if (intervention.interventionType == Intervention::Type::ADD) {
+      // invalid intervention - no value
+      if (subjectState == intervention.obstacle) return {};
+
+      addObstacle(intervention.obstacle);
+    } else if (intervention.interventionType == Intervention::Type::REMOVE) {
+      obstacles.erase(intervention.obstacle);
+    }
+
+    affected.emplace_back(intervention.obstacle);
+    for (auto& bundle : successors(intervention.obstacle)) {
+      affected.emplace_back(bundle.state);
+    }
+
+    return std::optional{Patch({intervention}, affected)};
   }
 
   /**
    * Reverses a patch by re-adding or removing obstacles
    * @param patch
+   * @param subjectState Checking validity of reversal - can't re-add an obstacle on top of a subject
    */
-  void reversePatch(const Patch& patch) {
-    for (auto& intervention : patch.interventions) {
-      if (intervention.interventionType == Intervention::Type::REMOVE) {
-        obstacles.insert(intervention.obstacle);
-      } else if (intervention.interventionType == Intervention::Type::ADD) {
-        obstacles.erase(intervention.obstacle);
+  void reversePatch(const Patch& patch, const State& subjectState) {
+      if (patch.intervention.interventionType == Intervention::Type::REMOVE) {
+        if (subjectState == patch.intervention.obstacle) {
+          throw MetronomeException("Attempted to add obstacle in the subject's state");
+        }
+
+        obstacles.insert(patch.intervention.obstacle);
+      } else if (patch.intervention.interventionType == Intervention::Type::ADD) {
+        obstacles.erase(patch.intervention.obstacle);
       }
       // ignore identity
-    }
   }
 
   void visualize(std::ostream& display) const {
@@ -469,7 +475,7 @@ class GridWorld {
   Action getIdentityAction() const { return Action('0'); }
 
   Intervention getIdentityIntervention() const {
-    return Intervention({}, Intervention::IDENTITY);
+    return Intervention();
   }
 
 

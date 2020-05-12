@@ -291,12 +291,12 @@ def cartesian_product(base, key, values, filters=None):
     return new_base
 
 
-def distributed_execution(configurations):
+def distributed_execution(configurations, resource_dir=None):
     from slack_notification import start_experiment_notification, \
         end_experiment_notification
 
-    executor = create_remote_distlre_executor()
-#     executor = create_local_distlre_executor(8)
+    # executor = create_remote_distlre_executor()
+    executor = create_local_distlre_executor(8)
 
     futures = []
     progress_bar = tqdm(total=len(configurations), smoothing=0.1)
@@ -306,7 +306,10 @@ def distributed_execution(configurations):
 
     for configuration in configurations:
         executable = '/'.join([cwd, 'build/release/Metronome'])
-        resources = '/'.join([cwd, 'resources/'])
+        resources = resource_dir
+        if (resources is None):
+            resources = '/'.join([cwd, 'resources/'])
+
         json_configuration = f'{json.dumps(configuration)}\n\n'
 
         metadata = str(json_configuration)

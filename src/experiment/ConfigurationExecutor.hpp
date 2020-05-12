@@ -283,7 +283,7 @@ class ConfigurationExecutor {
 
   template<typename Domain, typename GrdPlanner>
   static Result executeGoalRecognitionDesignPlanner(const Configuration& configuration,
-                                                    const Domain& domain) {
+                                                    Domain& domain) {
     GrdPlanner planner(domain, configuration);
 
     auto subjectAlgorithm = configuration.getString(SUBJECT_ALGORITHM);

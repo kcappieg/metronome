@@ -105,6 +105,16 @@ namespace metronome {
      */
     virtual InterventionBundle getIdentityIntervention(const Domain& systemState) const = 0;
 
+    /**
+     * Return current prediction of subject's goal
+     * TODO: May need to refactor this to output goal sets with probabilities
+     * @param systemState
+     * @param subjectState
+     * @return
+     */
+    virtual typename Domain::State getGoalPrediction(const Domain& systemState,
+                                                      const typename Domain::State& subjectState) = 0;
+
   private:
     std::vector<std::unordered_map<std::string, std::int64_t>>
             iterationAttributes;

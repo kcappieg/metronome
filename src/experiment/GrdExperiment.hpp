@@ -22,10 +22,12 @@ template <typename Domain, typename GrdPlanner, typename SubjectPlanner>
 class GrdExperiment : public Experiment<Domain, GrdPlanner> {
 public:
   typedef typename Domain::State State;
+  typedef typename Domain::Action Action;
+  typedef typename Domain::Intervention Intervention;
   typedef typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle InterventionBundle;
   typedef typename Planner<Domain>::ActionBundle ActionBundle;
 
-  explicit GrdExperiment(Configuration configuration) : configuration(std::move(configuration)) {
+  explicit GrdExperiment(const Configuration& configuration) {
     if (configuration.hasMember(TIME_LIMIT)) {
       TimeTerminationChecker experimentTerminationChecker;
       experimentTerminationChecker.resetTo(configuration.getLong(TIME_LIMIT));
@@ -49,7 +51,7 @@ public:
     LOG(INFO) << "Begin GRD planning iterations";
 
     // Vector of "turns" taken. Note that in each turn the intervention comes first.
-    std::vector<std::pair<typename Domain::Intervention, typename Domain::Action>> turns;
+    std::vector<std::pair<Intervention, Action>> turns;
 
     // Keep a temporary cache of interventions / actions
     // These are used when either the dynamic or GRD algorithm
@@ -58,9 +60,12 @@ public:
     std::deque<ActionBundle> cachedActions;
 
     std::int64_t grdPlanningTime = 0;
-    std::int64_t grdExecutionTime = 0; // cost of interventions
+    std::int64_t grdExecutionCost = 0; // cost of interventions
+    std::int64_t subjectExecutionCost = 0;
     /** One turn = 1 Observer Intervention + 1 Subject Action */
     std::size_t turnCount = 0;
+    std::size_t goalReportedOnTurn = 0;
+    State goalPrediction{};
 
     State subjectState = domain.getStartState();
     const State subjectGoal = getSubjectGoal(configuration, domain);
@@ -71,7 +76,7 @@ public:
       domain.clearCurrentGoal();
       turnCount++;
 
-      // TODO: Measure planning time, execute GRD iteration
+      // Measure planning time, execute GRD iteration
       const auto iterationStartTime = currentNanoTime();
       std::vector<InterventionBundle> interventions = grdPlanner.selectInterventions(subjectState, domain);
       const auto iterationEndTime = currentNanoTime();
@@ -80,30 +85,81 @@ public:
       grdPlanningTime += iterationDuration;
 
       if (interventions.size() > 1) {
-        cachedInterventions = std::deque(interventions.begin(), interventions.end());
+        // recreate deque
+        cachedInterventions = std::deque<InterventionBundle>(interventions.begin(), interventions.end());
       } else if (cachedInterventions.size() == 0) {
         cachedInterventions.push_back(grdPlanner.getIdentityIntervention(domain));
       }
 
       // apply next intervention, keep changed states
-      const auto patch = domain.applyIntervention(cachedInterventions.pop_front());
+      const InterventionBundle interventionBundle = cachedInterventions.front();
+      const auto patch = validateIntervention(domain, interventionBundle.intervention, subjectState);
+      grdExecutionCost += interventionBundle.interventionCost;
 
 
       // Subject Iteration
-      // First check to see if anything has changed. If not, don't invoke planner
-      if (patch.affectedStates)
-      domain.setCurrentGoal(subjectGoal);
-      // TODO: Invoke Subject Planner (dynamic)
-      // Store whole sequence for next iteration (in case nothing changed)
+      // First check to see if anything has changed (or we've run out of actions). If not, don't invoke planner
+      if (patch.affectedStates.size() > 0 || cachedActions.size() == 0) {
+        domain.setCurrentGoal(subjectGoal);
 
-      // TODO: Construct turn pair from heads of both lists
-      // validate each turn pair as we go
+        // dynamic planner
+        // we don't care so much about its timing, so just plan and store
+        std::vector<ActionBundle> actions = subjectPlanner.replan(subjectState, patch.affectedStates, domain);
+
+        // cache actions in case GRD planner doesn't affect any states
+        cachedActions = std::deque<ActionBundle>(actions.begin(), actions.end());
+      }
+
+      // transition subject
+      const ActionBundle actionBundle = cachedActions.front();
+      subjectState = validateAction(domain, subjectState, actionBundle.action);
+      subjectExecutionCost += actionBundle.actionDuration;
+
+      // construct pair
+      turns.emplace_back(interventionBundle.intervention, actionBundle.action);
+
+      cachedActions.pop_front();
+      cachedInterventions.pop_front();
+
+      // get goal prediction
+      goalPrediction = grdPlanner.getGoalPrediction(domain, subjectState);
+      if (goalPrediction == subjectGoal) {
+        if (goalReportedOnTurn == 0) {
+          goalReportedOnTurn = turnCount;
+        }
+      } else {
+        // reset for incorrect predictions
+        goalReportedOnTurn = 0;
+      }
     }
 
-    return Result(configuration, "Not implemented");
+    std::vector<std::string> turnList;
+    for (auto& turn : turns) {
+      std::ostringstream str;
+      str << "Intervention: " << turn.first
+        << "; Action: " << turn.second;
+
+      turnList.push_back(str.str());
+    }
+
+    Result result(configuration,
+                  grdPlanner.getExpandedNodeCount(),
+                  grdPlanner.getGeneratedNodeCount(),
+                  grdPlanningTime,
+                  grdExecutionCost,
+                  0,
+                  0,
+                  0,
+                  turns.size(),
+                  turnList,
+                  turnCount);
+
+    result.attributes = grdPlanner.getAttributes();
+    result.attributes.emplace_back("goalReportedIteration", goalReportedOnTurn);
+
+    return result;
   }
 private:
-  const Configuration configuration;
   std::optional<TimeTerminationChecker> experimentTimeLimit;
 
   const State getSubjectGoal(const Configuration& configuration, const Domain& domain) {
@@ -149,6 +205,34 @@ private:
     }
 
     if (std::abs(tally) > 0.000001) throw MetronomeException("Goal priors do not sum to 1");
+  }
+
+  State validateAction(const Domain& domain,
+                       const State& state,
+                       const Action& action) {
+    auto nextState = domain.transition(state, action);
+
+    if (!nextState.has_value()) {
+      LOG(ERROR) << "Invalid action " << action << " from: " << state;
+      throw MetronomeException("Invalid action. Subject plan is corrupt.");
+    }
+    LOG(INFO) << "> action from: " << state;
+
+    return nextState.value();
+  }
+
+  typename Domain::Patch validateIntervention(Domain& domain,
+                                              const Intervention& intervention,
+                                              const State& subjectState) {
+    std::optional<typename Domain::Patch> patch = domain.applyIntervention(intervention, subjectState);
+
+    if (!patch.has_value()) {
+      LOG(ERROR) << "Invalid intervention " << intervention << " at subject state " << subjectState;
+      throw MetronomeException("Invalid intervention. GRD plan is corrupt");
+    }
+    LOG(INFO) << "> intervention applied: " << intervention;
+
+    return patch.value();
   }
 };
 

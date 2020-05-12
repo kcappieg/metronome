@@ -65,7 +65,7 @@ class Domain {
     // TODO
   }
 
-  const State transition(const State& state, const Action& action) const {
+  std::optional<const State> transition(const State& state, const Action& action) const {
     // TODO
   }
 
@@ -150,16 +150,17 @@ class Domain {
   /**
    * This method will mutate the domain
    * @param intervention
-   * @return The patch that was applied
+   * @param subjectState Current state of subject (checks legal interventions)
+   * @return The patch that was applied. Will not have value on failure
    */
-  Patch applyInterventions(const std::vector<Intervention>& interventions) {
+  std::optional<Patch> applyIntervention(const Intervention& intervention, const State& subjectState) {
     // TODO
   }
 
   /**
    * This method will mutate the domain
    */
-  void reversePatch(const Patch&) {
+  void reversePatch(const Patch&, const State& subjectState) {
     // TODO
   }
 };

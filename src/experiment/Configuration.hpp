@@ -81,13 +81,13 @@ static const std::string WEIGHT{"weight"};
 class Configuration {
  public:
   Configuration() : document{} {};
-  //  Configuration(const Configuration&) = default;
+//    Configuration(const Configuration&) = default;
   Configuration(const Configuration&) : document{} {
-    std::cout << "Here" << std::endl;
+    std::cout << "Config Copy" << std::endl;
   };
-  //    Configuration(Configuration&&) = default;
+//      Configuration(Configuration&&) = default;
   Configuration(Configuration&&) : document{} {
-    std::cout << "Here" << std::endl;
+    std::cout << "Config Move" << std::endl;
   };
 
   Configuration(rapidjson::Document document) : document{std::move(document)} {}

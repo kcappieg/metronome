@@ -34,6 +34,16 @@ namespace metronome {
     InterventionBundle getIdentityIntervention(const Domain& systemState) const override {
       return {systemState.getIdentityIntervention(), 1};
     }
+
+    State getGoalPrediction(const Domain& systemState,
+                                             const State& subjectState) override {
+      for (auto goal : systemState.getGoals()) {
+        if (systemState.isGoal(subjectState, goal)) return goal;
+      }
+
+      // just return the first one
+      return systemState.getGoals()[0];
+    }
   };
 
 } // namespace metronome
