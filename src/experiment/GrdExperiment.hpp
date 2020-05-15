@@ -183,8 +183,7 @@ private:
         sum += goalPriors[++goalIndex];
       }
     } else {
-      std::uniform_int_distribution<uint32_t> distribution(0, goalVector.size());
-      goalIndex = distribution(rand);
+      throw MetronomeException("No goal priors");
     }
 
     return goalVector[goalIndex];

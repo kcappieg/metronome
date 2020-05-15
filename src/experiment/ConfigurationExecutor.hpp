@@ -221,7 +221,7 @@ class ConfigurationExecutor {
     if (algorithmName == GRD_ALGORITHM_TRIVIAL) {
       LOG(INFO) << "Trivial GRD";
 
-      return executeGoalRecognitionDesignPlanner<Domain, TrivialGrdPlanner<Domain>>(
+      return executeGoalRecognitionDesignPlanner<Domain, NaiveOptimalActiveGoalRecognitionDesign<Domain>>(
                       configuration, domain);
     }
 #endif

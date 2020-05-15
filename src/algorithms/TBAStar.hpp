@@ -456,8 +456,8 @@ class TBAStar final : public OnlinePlanner<Domain, TerminationChecker> {
   }
 
   typedef int (*Comparator)(const Node&, const Node&);
-  static constexpr Comparator fComparator = &metronome::fComparator<Domain>;
-  static constexpr Comparator hComparator = &metronome::hComparator<Domain>;
+  static constexpr Comparator fComparator = &metronome::standardFComparator<Domain>;
+  static constexpr Comparator hComparator = &metronome::standardHComparator<Domain>;
 
   // Config
   bool threshold;

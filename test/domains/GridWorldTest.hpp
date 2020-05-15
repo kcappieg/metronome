@@ -67,9 +67,9 @@ TEST_CASE("GridWorld getters", "[GridWorld]") {
             metronome::GridWorld::State testState = metronome::GridWorld::State(i, j);
             LOG(INFO) << "R_LOC: " << testState.getX() << " " << testState.getY() << std::endl;
 //            if (gridWorld.isObstacle(testState)) {
-//                REQUIRE(!gridWorld.isLegalLocation(testState));
+//                REQUIRE(!gridWorld.isValidState(testState));
 //            } else {
-//                REQUIRE(gridWorld.isLegalLocation(testState));
+//                REQUIRE(gridWorld.isValidState(testState));
 //            }
         }
     }

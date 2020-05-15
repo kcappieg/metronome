@@ -257,7 +257,7 @@ class GridWorld {
     State targetState(sourceState.getX() + action.relativeX(),
                       sourceState.getY() + action.relativeY());
 
-    if (isLegalLocation(targetState)) {
+    if (isValidState(targetState)) {
       return targetState;
     }
 
@@ -287,7 +287,7 @@ class GridWorld {
   }
 
   /*Validating the agent can visit the state*/
-  bool isLegalLocation(const State& state) const {
+  bool isValidState(const State& state) const {
     return state.getX() < width && state.getY() < height
            && !isObstacle(state);
   }
@@ -298,7 +298,7 @@ class GridWorld {
 
   /*Adding an obstacle to the domain*/
   bool addObstacle(const State& toAdd) {
-    if (isLegalLocation(toAdd)) {
+    if (isValidState(toAdd)) {
       obstacles.insert(toAdd);
       return true;
     }
@@ -327,7 +327,7 @@ class GridWorld {
   }
 
   Cost distance(const State& state) const {
-    if (goalLocations.size() == 1) {
+    if (useSingleGoal) {
       return distance(state, singleGoal);
     } else {
       throw MetronomeException("Goal ambiguous - Distance function invoked with implicit goal, but goal set is greater than one.");
@@ -420,8 +420,12 @@ class GridWorld {
       // invalid intervention - no value
       if (subjectState == intervention.obstacle) return {};
 
-      addObstacle(intervention.obstacle);
+      // If no obstacles added, that means it was invalid
+      if (!addObstacle(intervention.obstacle)) return {};
     } else if (intervention.interventionType == Intervention::Type::REMOVE) {
+      // invalid intervention - no value
+      if (!isObstacle(intervention.obstacle)) return {};
+
       obstacles.erase(intervention.obstacle);
     }
 
@@ -504,7 +508,7 @@ class GridWorld {
 
     State newState = State(newX, newY);
 
-    if (isLegalLocation(newState)) {
+    if (isValidState(newState)) {
       return newState;
     }
 

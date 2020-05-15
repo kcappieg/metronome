@@ -103,7 +103,9 @@ namespace metronome {
      * Must be implemented so that experiment runner can handle situation where the
      * GRD planner does not return any interventions.
      */
-    virtual InterventionBundle getIdentityIntervention(const Domain& systemState) const = 0;
+    virtual InterventionBundle getIdentityIntervention(const Domain& systemState) const {
+      return {systemState.getIdentityIntervention(), 1};
+    }
 
     /**
      * Return current prediction of subject's goal
@@ -115,10 +117,11 @@ namespace metronome {
     virtual typename Domain::State getGoalPrediction(const Domain& systemState,
                                                       const typename Domain::State& subjectState) = 0;
 
+  protected:
+    std::size_t iterationCount = 0;
   private:
     std::vector<std::unordered_map<std::string, std::int64_t>>
             iterationAttributes;
-    std::size_t iterationCount = 0;
   };
 
 } // namespace metronome

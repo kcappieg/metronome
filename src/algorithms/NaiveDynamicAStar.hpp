@@ -10,6 +10,10 @@
 #include "AStar.hpp"
 
 namespace metronome {
+  /**
+   * Naive Dynamic algorithm. Invokes A* every time it is asked to replan.
+   * @tparam Domain
+   */
   template<typename Domain>
   class NaiveDynamicAStar final : public DynamicPlanner<Domain> {
   public:

@@ -10,7 +10,7 @@
 
 namespace metronome {
   template <typename Domain>
-  class TrivialGrdPlanner final : public GoalRecognitionDesignPlanner<Domain> {
+  class NaiveOptimalActiveGoalRecognitionDesign final : public GoalRecognitionDesignPlanner<Domain> {
   public:
     using State = typename Domain::State;
     using Action = typename Domain::Action;
@@ -19,20 +19,13 @@ namespace metronome {
     using Planner = metronome::Planner<Domain>;
     using InterventionBundle = typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle;
 
-    TrivialGrdPlanner(const Domain&, const Configuration&){}
+    NaiveOptimalActiveGoalRecognitionDesign(const Domain&, const Configuration&){}
 
     std::vector<InterventionBundle> selectInterventions(
             const typename Domain::State&, const Domain& systemState
     ) override {
       GoalRecognitionDesignPlanner<Domain>::beginIteration();
-
-      // Depends on identity intervention function being available
-      Intervention inter = systemState.getIdentityIntervention();
-      return {{inter, 1}};
-    }
-
-    InterventionBundle getIdentityIntervention(const Domain& systemState) const override {
-      return {systemState.getIdentityIntervention(), 1};
+      return {this->getIdentityIntervention(systemState)};
     }
 
     State getGoalPrediction(const Domain& systemState,
