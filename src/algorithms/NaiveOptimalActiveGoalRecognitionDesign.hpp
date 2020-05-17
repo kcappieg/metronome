@@ -5,6 +5,7 @@
 #ifndef METRONOME_NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_HPP
 #define METRONOME_NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_HPP
 
+#include <cassert>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -34,7 +35,7 @@ namespace metronome {
     using InterventionBundle = typename Base::InterventionBundle;
 
     NaiveOptimalActiveGoalRecognitionDesign(const Domain& domain, const Configuration& config)
-        : openList(Memory::OPEN_LIST_SIZE, fComparator<Node>()){
+        : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>){
       if (config.hasMember(GOAL_PRIORS)) {
         std::vector<double> goalPriors = config.getDoubles(GOAL_PRIORS);
 
@@ -66,12 +67,7 @@ namespace metronome {
 
     State getGoalPrediction(const Domain& systemState,
                             const State& subjectState) override {
-      for (auto goal : systemState.getGoals()) {
-        if (systemState.isGoal(subjectState, goal)) return goal;
-      }
-
-      // just return the first one
-      return systemState.getGoals()[0];
+      // TODO
     }
 
   private:
@@ -83,6 +79,7 @@ namespace metronome {
         if (parent != nullptr) {
           parents.emplace_back(parent);
         }
+        goalBackupIteration = 0;
       }
 
       size_t hash() const { return state.hash(); }
@@ -107,6 +104,7 @@ namespace metronome {
       std::unordered_map<State, size_t> goalsToPlanCount{};
 
       unsigned int iteration;
+      unsigned int goalBackupIteration;
 
       std::string toString() {
         std::ostringstream stream;
@@ -118,15 +116,22 @@ namespace metronome {
 
     /*****************************************
             Algorithm methods
+            Methods with formal definitions
     *****************************************/
 
     /**
      * Enumerate all optimal plans to all goals so that we can configure goal hypotheses and plan counts.
      * Basically A* except we don't stop until we've exhausted the full f-layer of all goals
+     *
+     * WARNING: This method does not work for underspecified goals! It depends on the goal state reached
+     * being a fully qualified and unique state.
      * @param root
      */
     void recomputeOptimalInfo(const State& root) {
-      // init open list
+      // reset open list comparator
+      openList.clear();
+      openList.reorder(&fComparator<Node>);
+
       Node* rootNode = getOrCreateSuccessor(nullptr, root);
       rootNode->g = 0;
       rootNode->iteration = Base::iterationCount;
@@ -134,27 +139,61 @@ namespace metronome {
       openList.push(rootNode);
 
       // set up local set for goals. We will tick them off when we expand them
-      std::unordered_set<State> unfoundGoals{};
-      for (auto& entry : goalsToPriors)  unfoundGoals.insert(entry.first);
+      std::unordered_set<Node*> foundGoals{};
+      size_t numGoals = goalsToPriors.size();
 
       Cost finalFLayer = std::numeric_limits<Cost>::max();
 
-      // while open isn't empty or goal count > 0
-      // expand as A* - add to successors / parents
+      // loop through until we've found all paths to all goals
+      while (openList.isNotEmpty()) {
+        Node* top = openList.pop();
+        // we've found every path to every goal
+        if (top->f() > finalFLayer) {
+          break;
+        }
 
-      // If a goal is expanded, check if it's already been expanded
-      // mark it off, record its f-layer value
-      // once all goals have been found, set the "final" f layer value. Once any node above that f-layer is expanded, break loop
+        // If this is the last goal, set the final F-layer var.
+        if (domain->isGoal(top->state)
+            && foundGoals.insert(top).second
+            && foundGoals.size() == numGoals) {
+          finalFLayer = top->f();
+        }
+        top->open = false;
 
-      // From each goal, trace back to all monotonically decreasing (in g) parents
-      // carry backward the number of paths through this node as we go, and add the goal to the goal hypothesis
-        // To accomplish this, probably need to use the open list. Perhaps a max-queue on g seeded with each goal?
-        // Do all goal backtracking in 1 by tracking which goal(s) the expanded node can reach optimally
+        // Even if it is a goal, must continue to expand
+        // Path to another goal may exclusively pass through this goal
+        expandNode(top);
+      }
 
-      // clear open list - we may need it again, so ensure it's clear
+      if (foundGoals.size() == 0) {
+        throw MetronomeException("No goals discovered from subject's current state. Dead end!");
+      } else if (foundGoals.size() > numGoals) {
+        throw MetronomeException("Underspecified goals not implemented in recompute optimal function");
+      }
+
       openList.clear();
+      openList.reorder(&gMaxComparator<Node>);
 
-      // TODO
+      // seed reverse open list with all found goals
+      for (Node* goal : foundGoals) {
+        goal->goalBackupIteration = Base::iterationCount;
+        // seed the goals to plans map with this goal and count 1
+        goal->goalsToPlanCount = {{goal->state, 1}};
+        openList.push(goal);
+      }
+
+      // Loop until open is fully empty
+      int64_t backupCount = 0;
+      while (openList.isNotEmpty()) {
+        Node* top = openList.pop();
+
+        backupGoalHypothesis(top);
+        backupCount++;
+      }
+      Base::recordAttribute("backups", backupCount);
+
+      // clear open list - we no longer need it, so ensure no bugs slip in for later uses of it
+      openList.clear();
     }
 
     double actionTrial() {
@@ -182,7 +221,7 @@ namespace metronome {
     *****************************************/
 
     /**
-     * Creates a node if it doesn't already exist. Updates parent / successor sets
+     * Creates a node if it doesn't already exist. Updates parent / successor sets.
      * @param domain
      * @param parent
      * @param successorState
@@ -225,6 +264,67 @@ namespace metronome {
       return minH;
     }
 
+    /**
+     * Basically a standard A* node expansion
+     * @param source
+     */
+    void expandNode(Node* source) {
+      Planner::incrementExpandedNodeCount();
+
+      for (SuccessorBundle<Domain> successor : domain->successors(source->state)) {
+        // handles adding to parent/successor lists
+        Node* successorNode = getOrCreateSuccessor(source, successor.state);
+
+        // Node is outdated
+        if (successorNode->iteration != Base::iterationCount) {
+          successorNode->iteration = Base::iterationCount;
+          successorNode->g = std::numeric_limits<Cost>::max();
+          successorNode->open = false;
+        }
+
+        Cost successorPotentialG = source->g + successor.actionCost;
+        if (successorNode->g > successorPotentialG) {
+          successorNode->g = successorPotentialG;
+
+          if (!successorNode->open) {
+            successorNode->open = true;
+            openList.push(successorNode);
+          } else {
+            openList.update(successorNode);
+          }
+        }
+      }
+    }
+
+    /**
+     * Backing up goal hypothesis to predecessors along with plan counts
+     * @param source
+     */
+    void backupGoalHypothesis(Node* source) {
+      bool isGoal = domain->isGoal(source->state);
+
+      for (Node* predecessor : source->parents) {
+        // skip if g is not monotonically decreasing
+        // Also, if we did not touch predecessor this iteration we'll skip it
+        if (predecessor->g >= source->g || predecessor->iteration != source->iteration) continue;
+
+        // If we haven't seen this node this backup iteration, reset its goal hypothesis
+        if (predecessor->goalBackupIteration != source->goalBackupIteration) {
+          predecessor->goalBackupIteration = source->goalBackupIteration;
+          predecessor->goalsToPlanCount = {};
+        }
+
+        assert(source->goalsToPlanCount.size() > 0);
+        for (const auto& entry : source->goalsToPlanCount) {
+          // Try emplace does nothing if key already exists
+          predecessor->goalsToPlanCount.try_emplace(entry.first, 0);
+          predecessor->goalsToPlanCount[entry.first] += entry.second;
+        }
+
+        openList.push(predecessor);
+      }
+    }
+
     /*****************************************
             Properties
     *****************************************/
@@ -236,7 +336,6 @@ namespace metronome {
 
     Domain* domain = nullptr;
   };
-
 } // namespace metronome
 
 #endif //METRONOME_NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_HPP

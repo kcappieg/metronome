@@ -94,7 +94,7 @@ class Domain {
     // TODO
   }
 
-  std::vector<State> getGoals() const {
+  const std::vector<State> getGoals() const {
     // TODO
   }
 

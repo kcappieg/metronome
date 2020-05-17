@@ -41,4 +41,16 @@ int gComparator(const Node& lhs, const Node& rhs) {
   return 0;
 }
 
+/**
+ * Max comparator on g-value. Just reverses min comparator
+ * @tparam Node
+ * @param lhs
+ * @param rhs
+ * @return
+ */
+template<typename Node>
+int gMaxComparator(const Node& lhs, const Node& rhs) {
+  return -1 * gComparator<Node>(lhs, rhs);
+}
+
 } //namespace metronome
