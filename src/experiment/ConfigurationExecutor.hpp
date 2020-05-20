@@ -3,6 +3,7 @@
 #include <easylogging++.h>
 #include <rapidjson/document.h>
 #include <string>
+#include <algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp>
 #include "Configuration.hpp"
 #include "MetronomeException.hpp"
 #include "OfflineExperiment.hpp"
@@ -221,8 +222,17 @@ class ConfigurationExecutor {
     if (algorithmName == GRD_ALGORITHM_TRIVIAL) {
       LOG(INFO) << "Trivial GRD";
 
-      return executeGoalRecognitionDesignPlanner<Domain, NaiveOptimalActiveGoalRecognitionDesign<Domain>>(
+      return executeGoalRecognitionDesignPlanner<Domain, TrivialGrdPlanner<Domain>>(
                       configuration, domain);
+    }
+#endif
+
+#ifdef ENABLE_NAIVE_OPTIMAL_AGRD
+    if (algorithmName == GRD_ALGORITHM_NAIVE_OPTIMAL) {
+      LOG(INFO) << "Naive Optimal GRD";
+
+      return executeGoalRecognitionDesignPlanner<Domain, NaiveOptimalActiveGoalRecognitionDesign<Domain>>(
+              configuration, domain);
     }
 #endif
 

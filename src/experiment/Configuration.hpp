@@ -42,6 +42,7 @@ static const std::string ALGORITHM_TIME_BOUNDED_A_STAR{"TIME_BOUNDED_A_STAR"};
 
 // GRD algs
 static const std::string GRD_ALGORITHM_TRIVIAL{"TRIVIAL_GRD"};
+static const std::string GRD_ALGORITHM_NAIVE_OPTIMAL{"NAIVE_OPTIMAL_AGRD"};
 
 // Dynamic algs
 static const std::string ALGORITHM_NAIVE_DYNAMIC{"NAIVE_DYNAMIC"};

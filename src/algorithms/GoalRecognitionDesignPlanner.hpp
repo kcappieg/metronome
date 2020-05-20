@@ -7,53 +7,15 @@
 
 #include <vector>
 #include "Planner.hpp"
+#include "domains/SuccessorBundle.hpp"
 
 namespace metronome {
 
   template<typename Domain>
   class GoalRecognitionDesignPlanner : public Planner<Domain> {
   public:
-    /** Mimics the Action Bundle class of Planner */
-    class InterventionBundle final {
-    public:
-      InterventionBundle() = default;
-      InterventionBundle(typename Domain::Intervention intervention,
-                   typename Domain::Cost interventionCost)
-              : intervention{intervention}, interventionCost{interventionCost} {}
-      InterventionBundle(const InterventionBundle&) = default;
-      InterventionBundle(InterventionBundle&&) = default;
-      InterventionBundle& operator=(const InterventionBundle&) = default;
-      InterventionBundle& operator=(InterventionBundle&&) = default;
-      ~InterventionBundle() = default;
-
-      friend std::ostream& operator<<(std::ostream& os,
-                                      const InterventionBundle& bundle) {
-        os << "Intervention: " << bundle.intervention
-           << "; cost: " << bundle.interventionCost;
-
-        if (bundle.label.size() > 0) {
-          os << "; label: " << bundle.label;
-        }
-        return os;
-      }
-
-      typename Domain::Intervention intervention;
-      typename Domain::Cost interventionCost;
-      std::string label;
-    };
-
-    friend std::ostream& operator<<(
-            std::ostream& os,
-            const std::vector<typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle>&
-            interventionBundles) {
-      for (const auto& interventionBundle : interventionBundles) {
-        os << interventionBundle << "\n";
-      }
-      return os;
-    }
-
     virtual ~GoalRecognitionDesignPlanner() override = default;
-    virtual std::vector<typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle> selectInterventions(
+    virtual std::vector<InterventionBundle<Domain>> selectInterventions(
             const typename Domain::State& subjectState, const Domain& systemState
     ) = 0;
 
@@ -103,7 +65,7 @@ namespace metronome {
      * Must be implemented so that experiment runner can handle situation where the
      * GRD planner does not return any interventions.
      */
-    virtual InterventionBundle getIdentityIntervention(const Domain& systemState) const {
+    virtual InterventionBundle<Domain> getIdentityIntervention(const Domain& systemState) const {
       return {systemState.getIdentityIntervention(), 1};
     }
 
@@ -114,8 +76,8 @@ namespace metronome {
      * @param subjectState
      * @return
      */
-    virtual typename Domain::State getGoalPrediction(const Domain& systemState,
-                                                      const typename Domain::State& subjectState) = 0;
+    virtual std::optional<typename Domain::State> getGoalPrediction(
+            const Domain& systemState, const typename Domain::State& subjectState) = 0;
 
   protected:
     std::size_t iterationCount = 0;

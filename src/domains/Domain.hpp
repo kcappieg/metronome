@@ -157,6 +157,10 @@ class Domain {
     // TODO
   }
 
+  Intervention getIdentityIntervention() const {
+    // TODO
+  }
+
   /**
    * This method will mutate the domain
    * @param intervention

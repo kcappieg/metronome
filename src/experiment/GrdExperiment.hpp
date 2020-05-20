@@ -24,7 +24,6 @@ public:
   typedef typename Domain::State State;
   typedef typename Domain::Action Action;
   typedef typename Domain::Intervention Intervention;
-  typedef typename GoalRecognitionDesignPlanner<Domain>::InterventionBundle InterventionBundle;
   typedef typename Planner<Domain>::ActionBundle ActionBundle;
 
   explicit GrdExperiment(const Configuration& configuration) {
@@ -56,7 +55,7 @@ public:
     // Keep a temporary cache of interventions / actions
     // These are used when either the dynamic or GRD algorithm
     // either chooses not to return anything to do or doesn't need to (Dynamic algorithms)
-    std::deque<InterventionBundle> cachedInterventions;
+    std::deque<InterventionBundle<Domain>> cachedInterventions;
     std::deque<ActionBundle> cachedActions;
 
     std::int64_t grdPlanningTime = 0;
@@ -78,7 +77,7 @@ public:
 
       // Measure planning time, execute GRD iteration
       const auto iterationStartTime = currentNanoTime();
-      std::vector<InterventionBundle> interventions = grdPlanner.selectInterventions(subjectState, domain);
+      std::vector<InterventionBundle<Domain>> interventions = grdPlanner.selectInterventions(subjectState, domain);
       const auto iterationEndTime = currentNanoTime();
 
       const auto iterationDuration = iterationEndTime - iterationStartTime;
@@ -86,7 +85,7 @@ public:
 
       if (interventions.size() > 1) {
         // recreate deque
-        cachedInterventions = std::deque<InterventionBundle>(interventions.begin(), interventions.end());
+        cachedInterventions = std::deque<InterventionBundle<Domain>>(interventions.begin(), interventions.end());
       } else if (cachedInterventions.size() == 0) {
         cachedInterventions.push_back(grdPlanner.getIdentityIntervention(domain));
       }
@@ -122,14 +121,17 @@ public:
       cachedInterventions.pop_front();
 
       // get goal prediction
-      goalPrediction = grdPlanner.getGoalPrediction(domain, subjectState);
-      if (goalPrediction == subjectGoal) {
-        if (goalReportedOnTurn == 0) {
-          goalReportedOnTurn = turnCount;
+      auto optionalGoalPrediction = grdPlanner.getGoalPrediction(domain, subjectState);
+      if (optionalGoalPrediction.has_value()) {
+        goalPrediction = *optionalGoalPrediction;
+        if (goalPrediction == subjectGoal) {
+          if (goalReportedOnTurn == 0) {
+            goalReportedOnTurn = turnCount;
+          }
+        } else {
+          // reset for incorrect predictions
+          goalReportedOnTurn = 0;
         }
-      } else {
-        // reset for incorrect predictions
-        goalReportedOnTurn = 0;
       }
     }
 
