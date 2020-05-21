@@ -282,7 +282,7 @@ namespace metronome {
         }
 
         // descend
-        double trialScore = actionTrial(simulatedStateNode);
+        double trialScore = actionTrial(simulatedStateNode, subjectState);
         if (trialScore < score) {
           score = trialScore;
           argminIntervention.emplace(interventionBundle);
@@ -303,68 +303,18 @@ namespace metronome {
         return simulatedStateNode->g / goalsToOptimalCost[goalState];
       }
 
-      std::vector<double> actionProbabilities = computeActionProbabilities(simulatedStateNode);
-      // TODO
-    }
+      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities = computeActionProbabilities(simulatedStateNode);
+      double score = 0.0;
 
-// Scrapped this. Too fancy for a "Naive Optimal." Complexity was ballooning and correctness was hard to
-// reason about, so instead just recompute optimal plans from scratch every time
-//    bool repairOptimalInfo(const std::vector<State>& changedStates) {
-//      // TODO
-//      // START HERE
-//      // you've refactored to use edges for search nodes
-//      // mark edges inactive when applicable, use that to identify when changes need to be made
-//
-//      for (const State& state : changedStates) {
-//        Node* changedNode = nodes[state];
-//        if (changedNode == nullptr || !domain->isValidState(state)) {
-//          // We will deal with this when we find its successor/predecessor
-//          continue;
-//        }
-//
-//        std::unordered_set<State, StateHash> possibleStates{};
-//        for (auto& entry : changedNode->successors) {
-//          // max cost means the edge doesn't exist right now, so we ignore it
-//          if (entry.second.actionCost < std::numeric_limits<Cost>::max()) {
-//            possibleStates.insert(entry.first);
-//          }
-//        }
-//
-//        // check for change in g-value: match successors with existing edges, detect edge cost changes
-//        for (SuccessorBundle<Domain> successor : domain->successors(state)) {
-//          possibleStates.erase(successor.state);
-//          Edge& edge = changedNode->successors[successor.state];
-//
-//          if (edge == nullptr) {
-//            // technically reduced cost from infinity - successor goes on open
-//            Node* successorNode = createSuccessor(changedNode, successor.state, successor.actionCost);
-//          } else if (edge.actionCost != successor.actionCost) {
-//            if (edge.actionCost > successor.actionCost) {
-//              // reduced cost - successor goes on open
-//
-//            } else {
-//              // increased cost - back up change in goal hypothesis
-//
-//            }
-//
-//            edge.actionCost = successor.actionCost;
-//          }
-//        }
-//
-//        // any states leftover were unreachable
-//        for (State& unreachableState : possibleStates) {
-//          Edge& edge = changedNode->successors[unreachableState];
-//          if (edge.actionCost != std::numeric_limits<Cost>::max()) {
-//            edge.actionCost = std::numeric_limits<Cost>::max();
-//            // increased cost - back up change in goal hypothesis
-//          }
-//        }
-//      }
-//
-//      // cycle through states, see what changed
-//      // back up changes if edges removed
-//      // advance forward info if edges added
-//    }
+      for (auto& entry : actionProbabilities) {
+        Node* successor = entry.first;
+        double probability = entry.second;
+
+        score += probability * interventionTrial(successor, subjectState).first;
+      }
+
+      return score;
+    }
 
     /**
      * Computes probability of every valid successor of the simulated state node.
@@ -372,11 +322,11 @@ namespace metronome {
      * @param simulatedStateNode
      * @return
      */
-    std::unordered_map<State, double, StateHash> computeActionProbabilities(Node* simulatedStateNode) {
+    std::unordered_map<Node*, double, metronome::Hash<Node>> computeActionProbabilities(Node* simulatedStateNode) {
       std::unordered_map<State, double, StateHash> adjustedGoalPriors{};
       double reachablePriorSum = 0.0;
       for (auto& entry : simulatedStateNode->goalsToPlanCount) {
-        State& goal = entry.first;
+        const State& goal = entry.first;
 
         adjustedGoalPriors[goal] = goalsToPriors[goal];
         reachablePriorSum += goalsToPriors[goal];
@@ -385,7 +335,7 @@ namespace metronome {
         adjustedGoalPriors[entry.first] = entry.second / reachablePriorSum;
       }
 
-      std::unordered_map<State, double, StateHash> actionProbabilities{};
+      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities{};
       // for each action
       for (size_t i = 0; i < simulatedStateNode->successors.size(); i++) {
         Edge& successorEdge = simulatedStateNode->successors[i];
@@ -393,14 +343,13 @@ namespace metronome {
         // this means the successor is not on any optimal plan, so we can skip
         if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;
 
-        State& successorState = successorEdge.to->state;
-        actionProbabilities[successorState] = 0.0;
+        actionProbabilities[successorEdge.to] = 0.0;
 
         // cycle through goal hypothesis of successor
         for (auto& entry : successorEdge.to->goalsToPlanCount) {
           // Add to the probability of this action:
             // adjusted goal prior * fraction of plans from simulated node to the goal that pass through successor
-          actionProbabilities[successorState] +=
+          actionProbabilities[successorEdge.to] +=
                   adjustedGoalPriors[entry.first] * (entry.second / simulatedStateNode->goalsToPlanCount[entry.first]);
         }
       }
@@ -422,9 +371,9 @@ namespace metronome {
     Node* createSuccessor(Node* parent, const State& successorState, Cost actionCost = 0) {
       Node* tempNode = nodes[successorState];
 
-      if (nodes[successorState] == nullptr) {
+      if (tempNode == nullptr) {
         Planner::incrementGeneratedNodeCount();
-        Node* tempNode = nodePool.construct(
+        tempNode = nodePool.construct(
                 successorState,
                 std::numeric_limits<Cost>::max(),
                 getMinHeuristic(successorState),
@@ -502,7 +451,8 @@ namespace metronome {
      * @param source
      */
     void backupGoalHypothesis(Node* source) {
-      for (Node* predecessor : source->parents) {
+      for (Edge predecessorEdge : source->parents) {
+        Node* predecessor = predecessorEdge.from;
         // skip if g is not monotonically decreasing
         // Also, if we did not touch predecessor this iteration we'll skip it
         if (predecessor->g >= source->g || predecessor->iteration != source->iteration) continue;

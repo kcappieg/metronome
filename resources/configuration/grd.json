@@ -1,5 +1,5 @@
 {
-  "algorithmName": "TRIVIAL_GRD",
+  "algorithmName": "NAIVE_OPTIMAL_AGRD",
   "actionDuration": 10,
   "interventionCost": 10,
   "terminationType": "EXPANSION",
