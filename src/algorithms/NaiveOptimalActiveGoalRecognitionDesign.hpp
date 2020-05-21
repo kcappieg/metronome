@@ -58,10 +58,14 @@ namespace metronome {
       Domain localDomain(systemState);
       domain = &localDomain;
 
+      uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
+
       recomputeOptimalInfo(subjectState);
 
-      auto intervention = interventionTrial(nodes[subjectState]).second;
+      auto intervention = interventionTrial(nodes[subjectState], subjectState).second;
       domain = nullptr;
+
+      Base::recordAttribute("numOptimalRecomputations", recomputeOptimalIteration - recomputeOptimalBegin);
 
       if (intervention.has_value()) return {*intervention};
       return {};
@@ -147,6 +151,7 @@ namespace metronome {
       openList.clear();
       openList.reorder(&fComparator<Node>);
       goalsToOptimalCost.clear();
+      recomputeOptimalIteration++;
 
       Node* rootNode = nodes[root];
       if (rootNode == nullptr) {
@@ -154,7 +159,7 @@ namespace metronome {
       }
 
       rootNode->g = 0;
-      rootNode->iteration = Base::iterationCount;
+      rootNode->iteration = recomputeOptimalIteration;
 
       openList.push(*rootNode);
 
@@ -199,7 +204,7 @@ namespace metronome {
 
       // seed reverse open list with all found goals
       for (Node* goal : foundGoals) {
-        goal->goalBackupIteration = Base::iterationCount;
+        goal->goalBackupIteration = recomputeOptimalIteration;
         // seed the goalsToPlans map with this goal and count 1
         goal->goalsToPlanCount = {{goal->state, 1}};
         openList.push(*goal);
@@ -221,7 +226,8 @@ namespace metronome {
 
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
-    std::pair<double, std::optional<InterventionBundle<Domain>>> interventionTrial(Node* simulatedStateNode) {
+    std::pair<double, std::optional<InterventionBundle<Domain>>> interventionTrial(
+            Node* simulatedStateNode, const State& subjectState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
@@ -233,7 +239,9 @@ namespace metronome {
       std::queue<Node*> queue {{simulatedStateNode}};
       while (!queue.empty()) {
         Node* next = queue.front();
-        for (Node* succ : next->successors) {
+        for (Edge& edge : next->successors) {
+          // grab successor node from edge
+          Node* succ = edge.to;
           if (succ->goalBackupIteration == next->goalBackupIteration) {
             optimalPlanStates.emplace_back(succ->state);
             queue.push(succ);
@@ -249,11 +257,27 @@ namespace metronome {
         // invalid intervention - we will not consider it
         if (!optionalDomainPatch.has_value()) continue;
 
-        // apply patch, repair optimal info
+        // grab patch, repair optimal info
         const Patch& domainPatch = optionalDomainPatch.value();
-        if(!repairOptimalInfo(domainPatch.affectedStates)) {
+        // copy goals to optimal cost map so we can verify they don't change
+        std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
+        recomputeOptimalInfo(subjectState);
+
+        // detect change in optimal cost(s)
+        bool invalidIntervention = false;
+        for (auto& entry : goalsToOptimalCostCopy) {
+          Cost originalCost = entry.second;
+          Cost newCost = goalsToOptimalCost[entry.first];
+
+          if (originalCost != newCost) {
+            invalidIntervention = true;
+            break;
+          }
+        }
+        if (invalidIntervention) {
           // intervention changed the optimal cost to some goal. Reverse and continue
           domain->reversePatch(domainPatch, simulatedStateNode->state);
+          recomputeOptimalInfo(subjectState);
           continue;
         }
 
@@ -266,43 +290,122 @@ namespace metronome {
 
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
-        if (!repairOptimalInfo(domainPatch.affectedStates)) {
-          throw MetronomeException("Reversal of patch resulted in changing the optimal cost to some goal. This should never happen!");
-        }
+        recomputeOptimalInfo(subjectState);
       }
 
       return {score, argminIntervention};
     }
 
-    double actionTrial(Node* simulatedStateNode) {
+    double actionTrial(Node* simulatedStateNode, const State& subjectState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         return simulatedStateNode->g / goalsToOptimalCost[goalState];
       }
+
+      std::vector<double> actionProbabilities = computeActionProbabilities(simulatedStateNode);
       // TODO
     }
+
+// Scrapped this. Too fancy for a "Naive Optimal." Complexity was ballooning and correctness was hard to
+// reason about, so instead just recompute optimal plans from scratch every time
+//    bool repairOptimalInfo(const std::vector<State>& changedStates) {
+//      // TODO
+//      // START HERE
+//      // you've refactored to use edges for search nodes
+//      // mark edges inactive when applicable, use that to identify when changes need to be made
+//
+//      for (const State& state : changedStates) {
+//        Node* changedNode = nodes[state];
+//        if (changedNode == nullptr || !domain->isValidState(state)) {
+//          // We will deal with this when we find its successor/predecessor
+//          continue;
+//        }
+//
+//        std::unordered_set<State, StateHash> possibleStates{};
+//        for (auto& entry : changedNode->successors) {
+//          // max cost means the edge doesn't exist right now, so we ignore it
+//          if (entry.second.actionCost < std::numeric_limits<Cost>::max()) {
+//            possibleStates.insert(entry.first);
+//          }
+//        }
+//
+//        // check for change in g-value: match successors with existing edges, detect edge cost changes
+//        for (SuccessorBundle<Domain> successor : domain->successors(state)) {
+//          possibleStates.erase(successor.state);
+//          Edge& edge = changedNode->successors[successor.state];
+//
+//          if (edge == nullptr) {
+//            // technically reduced cost from infinity - successor goes on open
+//            Node* successorNode = createSuccessor(changedNode, successor.state, successor.actionCost);
+//          } else if (edge.actionCost != successor.actionCost) {
+//            if (edge.actionCost > successor.actionCost) {
+//              // reduced cost - successor goes on open
+//
+//            } else {
+//              // increased cost - back up change in goal hypothesis
+//
+//            }
+//
+//            edge.actionCost = successor.actionCost;
+//          }
+//        }
+//
+//        // any states leftover were unreachable
+//        for (State& unreachableState : possibleStates) {
+//          Edge& edge = changedNode->successors[unreachableState];
+//          if (edge.actionCost != std::numeric_limits<Cost>::max()) {
+//            edge.actionCost = std::numeric_limits<Cost>::max();
+//            // increased cost - back up change in goal hypothesis
+//          }
+//        }
+//      }
+//
+//      // cycle through states, see what changed
+//      // back up changes if edges removed
+//      // advance forward info if edges added
+//    }
 
     /**
-     * WARNING - does not support edge costs changes, only adding / removing edges altogether
-     * Updates goal hypotheses given the changed states. If it is found that the applied intervention
-     * changed the optimal cost for any goal, reverses all changes and returns false
-     * @param changedStates
-     * @return bool If a given patch was invalid (i.e. changed the optimal cost to any goal), returns false. Otherwise true
+     * Computes probability of every valid successor of the simulated state node.
+     * Returns map of successor state to its probability
+     * @param simulatedStateNode
+     * @return
      */
-    bool repairOptimalInfo(const std::vector<State>& changedStates) {
-      // TODO
-      // START HERE
-      // you've refactored to use edges for search nodes
-      // mark edges inactive when applicable, use that to identify when changes need to be made
+    std::unordered_map<State, double, StateHash> computeActionProbabilities(Node* simulatedStateNode) {
+      std::unordered_map<State, double, StateHash> adjustedGoalPriors{};
+      double reachablePriorSum = 0.0;
+      for (auto& entry : simulatedStateNode->goalsToPlanCount) {
+        State& goal = entry.first;
 
-      // cycle through states, see what changed
-      // back up changes if edges removed
-      // advance forward info if edges added
-    }
+        adjustedGoalPriors[goal] = goalsToPriors[goal];
+        reachablePriorSum += goalsToPriors[goal];
+      }
+      for (auto& entry : adjustedGoalPriors) {
+        adjustedGoalPriors[entry.first] = entry.second / reachablePriorSum;
+      }
 
-    std::vector<double> computeActionProbabilities() {
-      // TODO
+      std::unordered_map<State, double, StateHash> actionProbabilities{};
+      // for each action
+      for (size_t i = 0; i < simulatedStateNode->successors.size(); i++) {
+        Edge& successorEdge = simulatedStateNode->successors[i];
+
+        // this means the successor is not on any optimal plan, so we can skip
+        if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;
+
+        State& successorState = successorEdge.to->state;
+        actionProbabilities[successorState] = 0.0;
+
+        // cycle through goal hypothesis of successor
+        for (auto& entry : successorEdge.to->goalsToPlanCount) {
+          // Add to the probability of this action:
+            // adjusted goal prior * fraction of plans from simulated node to the goal that pass through successor
+          actionProbabilities[successorState] +=
+                  adjustedGoalPriors[entry.first] * (entry.second / simulatedStateNode->goalsToPlanCount[entry.first]);
+        }
+      }
+
+      return actionProbabilities;
     }
 
     /*****************************************
@@ -324,8 +427,8 @@ namespace metronome {
         Node* tempNode = nodePool.construct(
                 successorState,
                 std::numeric_limits<Cost>::max(),
-                getMinHeuristic(successorState, domain),
-                Base::iterationCount);
+                getMinHeuristic(successorState),
+                recomputeOptimalIteration);
 
         nodes[successorState] = tempNode;
       }
@@ -348,7 +451,7 @@ namespace metronome {
      * @param domain
      * @return
      */
-    Cost getMinHeuristic(const State& state, const Domain* domain) {
+    Cost getMinHeuristic(const State& state) {
       Cost minH = std::numeric_limits<Cost>::max();
       for (const auto& entry : goalsToPriors) {
         minH = std::min(minH, domain->heuristic(state, entry.first));
@@ -364,10 +467,9 @@ namespace metronome {
     void expandNode(Node* source) {
       Planner::incrementExpandedNodeCount();
 
-      std::vector<Node*> successors{};
       if (source->successors.size() == 0) {
         for (SuccessorBundle<Domain> successor : domain->successors(source->state)) {
-          successors.push_back(createSuccessor(source, successor.state, successor.actionCost));
+          createSuccessor(source, successor.state, successor.actionCost);
         }
       }
 
@@ -375,8 +477,8 @@ namespace metronome {
         Node* successorNode = edge.to;
 
         // Node is outdated
-        if (successorNode->iteration != Base::iterationCount) {
-          successorNode->iteration = Base::iterationCount;
+        if (successorNode->iteration != recomputeOptimalIteration) {
+          successorNode->iteration = recomputeOptimalIteration;
           successorNode->g = std::numeric_limits<Cost>::max();
           successorNode->open = false;
         }
@@ -433,6 +535,7 @@ namespace metronome {
 
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
+    uint64_t recomputeOptimalIteration = 0;
 
     Domain* domain = nullptr;
   };
