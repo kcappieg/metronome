@@ -132,7 +132,6 @@ namespace metronome {
       Node* from;
       Node* to;
       Cost actionCost;
-      bool isActive{true};
     };
 
     /*****************************************
@@ -235,10 +234,12 @@ namespace metronome {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
-        return {simulatedStateNode->g / goalsToOptimalCost[goalState], {}};
+        double g = static_cast<double>(simulatedStateNode->g);
+        double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
+        return {g / cStar, {}};
       }
 
-      if (depth > 10) return {1, {}};
+      if (depth > 1000) return {1, {}};
       depth++;
 
       // block-scope optimalPlanStates so that it is de-allocated after use
@@ -316,10 +317,10 @@ namespace metronome {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
-        return simulatedStateNode->g / goalsToOptimalCost[goalState];
+        return static_cast<double>(simulatedStateNode->g) / static_cast<double>(goalsToOptimalCost[goalState]);
       }
 
-      if (depth > 10) return 1;
+      if (depth > 1000) return 1;
       depth++;
 
       std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities = computeActionProbabilities(simulatedStateNode);
@@ -329,7 +330,8 @@ namespace metronome {
         Node* successor = entry.first;
         double probability = entry.second;
 
-        score += probability * interventionTrial(successor, subjectState).first;
+        double trial = interventionTrial(successor, subjectState).first;
+        score += probability * trial;
       }
 
       depth--;
@@ -360,7 +362,7 @@ namespace metronome {
       for (Edge& successorEdge : simulatedStateNode->successors) {
         // if g does not increase, the subject would not
         // transition from the simulated state to this successor via an optimal plan
-        if (successorEdge.to->g >= simulatedStateNode->g) continue;
+        if (successorEdge.to->g <= simulatedStateNode->g) continue;
 
         // this means the successor is not on any optimal plan, so we can skip
         if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;

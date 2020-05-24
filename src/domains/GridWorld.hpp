@@ -392,7 +392,7 @@ class GridWorld {
 
     interventions.reserve(newObstacles.size());
     for (auto obstacle : newObstacles) {
-      interventions.emplace_back(Intervention{obstacle, Intervention::Type::REMOVE}, interventionCost);
+      interventions.emplace_back(Intervention{obstacle, Intervention::Type::ADD}, interventionCost);
     }
 
     // Identify intervention - does nothing
