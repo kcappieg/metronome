@@ -377,6 +377,8 @@ class GridWorld {
   /**
    * Takes a vector of states and returns all interventions applicable to those states
    * NOTE: Only supports removing edges (adding obstacles) as of right now. Consider supporting add edges as well
+   * NOTE: This might return a lot of interventions. Efficient algorithms will curate the states passed to this
+   * function
    * @param states
    * @return
    */
@@ -385,6 +387,7 @@ class GridWorld {
     std::unordered_set<State, metronome::Hash<State>> newObstacles;
 
     for (auto& state : states) {
+      newObstacles.insert(state);
       for (auto& succ : successors(state)) {
         newObstacles.insert(succ.state);
       }
