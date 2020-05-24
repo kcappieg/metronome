@@ -68,6 +68,7 @@ public:
 
     State subjectState = domain.getStartState();
     const State subjectGoal = getSubjectGoal(configuration, domain);
+    LOG(INFO) << "Subject goal: " << subjectGoal;
 
     // Implement loop - get intervention, then action. Repeat.
     while (!domain.isGoal(subjectState, subjectGoal)) {

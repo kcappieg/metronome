@@ -36,8 +36,8 @@ int standardHComparator(const SearchNode<Domain>& lhs, const SearchNode<Domain>&
 
 template<typename Node>
 int gComparator(const Node& lhs, const Node& rhs) {
-  if (lhs.g > rhs.g) return -1;
-  if (lhs.g < rhs.g) return 1;
+  if (lhs.g < rhs.g) return -1;
+  if (lhs.g > rhs.g) return 1;
   return 0;
 }
 

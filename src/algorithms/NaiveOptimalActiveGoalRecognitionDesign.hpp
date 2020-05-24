@@ -57,6 +57,7 @@ namespace metronome {
       // copy domain, set accessible pointer to it
       Domain localDomain(systemState);
       domain = &localDomain;
+      depth = 0;
 
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
@@ -65,6 +66,7 @@ namespace metronome {
       auto intervention = interventionTrial(nodes[subjectState], subjectState).second;
       domain = nullptr;
 
+      depth = 0;
       Base::recordAttribute("numOptimalRecomputations", recomputeOptimalIteration - recomputeOptimalBegin);
 
       if (intervention.has_value()) return {*intervention};
@@ -107,7 +109,7 @@ namespace metronome {
       std::vector<Edge> parents{};
       /** Init successor set */
       std::vector<Edge> successors{};
-      bool open = true;
+      bool open = false;
 
       /** Goal Hypothesis - goal state maps to plan count */
       std::unordered_map<State, size_t, StateHash> goalsToPlanCount{};
@@ -208,6 +210,7 @@ namespace metronome {
         // seed the goalsToPlans map with this goal and count 1
         goal->goalsToPlanCount = {{goal->state, 1}};
         openList.push(*goal);
+        goal->open = true;
       }
 
       // Loop until open is fully empty
@@ -216,6 +219,7 @@ namespace metronome {
         Node* top = openList.pop();
 
         backupGoalHypothesis(top);
+        top->open = false;
         backupCount++;
       }
       Base::recordAttribute("backups", backupCount);
@@ -234,24 +238,35 @@ namespace metronome {
         return {simulatedStateNode->g / goalsToOptimalCost[goalState], {}};
       }
 
-      // get states relevant to the subject state
-      std::vector<State> optimalPlanStates {simulatedStateNode->state};
-      std::queue<Node*> queue {{simulatedStateNode}};
-      while (!queue.empty()) {
-        Node* next = queue.front();
-        for (Edge& edge : next->successors) {
-          // grab successor node from edge
-          Node* succ = edge.to;
-          if (succ->goalBackupIteration == next->goalBackupIteration) {
-            optimalPlanStates.emplace_back(succ->state);
-            queue.push(succ);
+      if (depth > 10) return {1, {}};
+      depth++;
+
+      // block-scope optimalPlanStates so that it is de-allocated after use
+      std::vector<InterventionBundle<Domain>> interventions;
+      {
+        // get states relevant to the subject state
+        std::unordered_set<State, StateHash> optimalPlanStates {simulatedStateNode->state};
+        std::queue<Node*> queue {{simulatedStateNode}};
+        while (!queue.empty()) {
+          Node* next = queue.front();
+          for (Edge& edge : next->successors) {
+            // grab successor node from edge
+            Node* succ = edge.to;
+            if (succ->goalBackupIteration == next->goalBackupIteration
+                && optimalPlanStates.insert(succ->state).second) {
+              queue.push(succ);
+            }
           }
+
+          queue.pop();
         }
+
+        interventions = domain->interventions({optimalPlanStates.begin(), optimalPlanStates.end()});
       }
 
       double score = 1.0;
       std::optional<InterventionBundle<Domain>> argminIntervention{};
-      for (InterventionBundle interventionBundle : domain->interventions(optimalPlanStates)) {
+      for (InterventionBundle interventionBundle : interventions) {
         std::optional<Patch> optionalDomainPatch =
                 domain->applyIntervention(interventionBundle.intervention, simulatedStateNode->state);
         // invalid intervention - we will not consider it
@@ -293,6 +308,7 @@ namespace metronome {
         recomputeOptimalInfo(subjectState);
       }
 
+      depth--;
       return {score, argminIntervention};
     }
 
@@ -302,6 +318,9 @@ namespace metronome {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         return simulatedStateNode->g / goalsToOptimalCost[goalState];
       }
+
+      if (depth > 10) return 1;
+      depth++;
 
       std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities = computeActionProbabilities(simulatedStateNode);
       double score = 0.0;
@@ -313,6 +332,7 @@ namespace metronome {
         score += probability * interventionTrial(successor, subjectState).first;
       }
 
+      depth--;
       return score;
     }
 
@@ -337,8 +357,10 @@ namespace metronome {
 
       std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities{};
       // for each action
-      for (size_t i = 0; i < simulatedStateNode->successors.size(); i++) {
-        Edge& successorEdge = simulatedStateNode->successors[i];
+      for (Edge& successorEdge : simulatedStateNode->successors) {
+        // if g does not increase, the subject would not
+        // transition from the simulated state to this successor via an optimal plan
+        if (successorEdge.to->g >= simulatedStateNode->g) continue;
 
         // this means the successor is not on any optimal plan, so we can skip
         if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;
@@ -461,6 +483,7 @@ namespace metronome {
         if (predecessor->goalBackupIteration != source->goalBackupIteration) {
           predecessor->goalBackupIteration = source->goalBackupIteration;
           predecessor->goalsToPlanCount = {};
+          predecessor->open = false;
         }
 
         assert(source->goalsToPlanCount.size() > 0);
@@ -470,7 +493,10 @@ namespace metronome {
           predecessor->goalsToPlanCount[entry.first] += entry.second;
         }
 
-        openList.push(*predecessor);
+        if (!predecessor->open) {
+          openList.push(*predecessor);
+          predecessor->open = true;
+        }
       }
     }
 
@@ -486,6 +512,7 @@ namespace metronome {
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
     uint64_t recomputeOptimalIteration = 0;
+    int32_t depth = 0;
 
     Domain* domain = nullptr;
   };
