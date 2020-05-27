@@ -32,7 +32,7 @@ class InterventionBundle {
   typedef typename Domain::Intervention Intervention;
   typedef typename Domain::Cost Cost;
 
-  InterventionBundle(Intervention intervention, Cost interventionCost)
+  InterventionBundle(const Intervention intervention, Cost interventionCost)
     : intervention(intervention), interventionCost(interventionCost) {}
 
   const Intervention intervention;

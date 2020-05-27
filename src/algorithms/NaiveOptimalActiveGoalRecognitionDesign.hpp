@@ -58,12 +58,15 @@ namespace metronome {
       Domain localDomain(systemState);
       domain = &localDomain;
       depth = 0;
+      if (!rootState.has_value()) {
+        *rootState = domain->getStartState();
+      }
 
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
-      recomputeOptimalInfo(subjectState);
+      recomputeOptimalInfo(*rootState);
 
-      auto intervention = interventionTrial(nodes[subjectState], subjectState).second;
+      auto intervention = interventionTrial(nodes[subjectState], *rootState).second;
       domain = nullptr;
 
       depth = 0;
@@ -230,7 +233,7 @@ namespace metronome {
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
     std::pair<double, std::optional<InterventionBundle<Domain>>> interventionTrial(
-            Node* simulatedStateNode, const State& subjectState) {
+            Node* simulatedStateNode, const State& rootState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
@@ -254,6 +257,7 @@ namespace metronome {
             // grab successor node from edge
             Node* succ = edge.to;
             if (succ->goalBackupIteration == next->goalBackupIteration
+                && succ->g > next->g
                 && optimalPlanStates.insert(succ->state).second) {
               queue.push(succ);
             }
@@ -277,7 +281,7 @@ namespace metronome {
         const Patch& domainPatch = optionalDomainPatch.value();
         // copy goals to optimal cost map so we can verify they don't change
         std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
-        recomputeOptimalInfo(subjectState);
+        recomputeOptimalInfo(rootState);
 
         // detect change in optimal cost(s)
         bool invalidIntervention = false;
@@ -290,15 +294,21 @@ namespace metronome {
             break;
           }
         }
+        // detect if the simulated state is no longer on an optimal path
+        // If not, this intervention is no good in this trial
+        if (simulatedStateNode->goalBackupIteration != recomputeOptimalIteration) {
+          invalidIntervention = true;
+        }
+
         if (invalidIntervention) {
           // intervention changed the optimal cost to some goal. Reverse and continue
           domain->reversePatch(domainPatch, simulatedStateNode->state);
-          recomputeOptimalInfo(subjectState);
+          recomputeOptimalInfo(rootState);
           continue;
         }
 
         // descend
-        double trialScore = actionTrial(simulatedStateNode, subjectState);
+        double trialScore = actionTrial(simulatedStateNode, rootState);
         if (trialScore < score) {
           score = trialScore;
           argminIntervention.emplace(interventionBundle);
@@ -306,14 +316,14 @@ namespace metronome {
 
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
-        recomputeOptimalInfo(subjectState);
+        recomputeOptimalInfo(rootState);
       }
 
       depth--;
       return {score, argminIntervention};
     }
 
-    double actionTrial(Node* simulatedStateNode, const State& subjectState) {
+    double actionTrial(Node* simulatedStateNode, const State& rootState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
@@ -330,7 +340,7 @@ namespace metronome {
         Node* successor = entry.first;
         double probability = entry.second;
 
-        double trial = interventionTrial(successor, subjectState).first;
+        double trial = interventionTrial(successor, rootState).first;
         score += probability * trial;
       }
 
@@ -367,6 +377,9 @@ namespace metronome {
         // this means the successor is not on any optimal plan, so we can skip
         if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;
 
+        // this means the state is invalid (possibly due to prior intervention)
+        if (!domain->isValidState(successorEdge.to->state)) continue;
+
         actionProbabilities[successorEdge.to] = 0.0;
 
         // cycle through goal hypothesis of successor
@@ -374,7 +387,8 @@ namespace metronome {
           // Add to the probability of this action:
             // adjusted goal prior * fraction of plans from simulated node to the goal that pass through successor
           actionProbabilities[successorEdge.to] +=
-                  adjustedGoalPriors[entry.first] * (entry.second / simulatedStateNode->goalsToPlanCount[entry.first]);
+                  adjustedGoalPriors[entry.first] *
+                  ((double)entry.second / (double)simulatedStateNode->goalsToPlanCount[entry.first]);
         }
       }
 
@@ -435,6 +449,7 @@ namespace metronome {
 
     /**
      * Basically a standard A* node expansion
+     * Note: Only supports removing edges, not adding edges
      * @param source
      */
     void expandNode(Node* source) {
@@ -447,6 +462,8 @@ namespace metronome {
       }
 
       for (Edge edge : source->successors) {
+        if (!domain->isValidState(edge.to->state)) continue;
+
         Node* successorNode = edge.to;
 
         // Node is outdated
@@ -510,6 +527,7 @@ namespace metronome {
     std::unordered_map<State, Node*, StateHash> nodes;
     ObjectPool<Node, Memory::NODE_LIMIT> nodePool;
     std::unordered_map<State, double, StateHash> goalsToPriors;
+    std::optional<State> rootState;
 
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};

@@ -198,20 +198,28 @@ class GridWorld {
     std::stringstream convertHeight(line);
     convertHeight >> height;
 
-    std::optional<State> tempStarState;
+    std::optional<State> tempStarState{};
 
     while (getline(input, line) && currentHeight < height) {
       for (char it : line) {
-        if (it == '@') {  // find the start location
-          tempStarState = State(currentWidth, currentHeight);
-        } else if (it == '*') {  // found a goal location
-          goalLocations.emplace(currentWidth, currentHeight);
-          goalVector.emplace_back(currentWidth, currentHeight);
-        } else if (it == '#') {  // store the objects
-          State object = State(currentWidth, currentHeight);
-          obstacles.insert(object);
-        } else {
-          // its an open cell nothing needs to be done
+        switch (it) {
+          case '@': // find the start location
+            tempStarState = State(currentWidth, currentHeight);
+            break;
+          case '*': // found a goal location
+            goalLocations.emplace(currentWidth, currentHeight);
+            goalVector.emplace_back(currentWidth, currentHeight);
+            break;
+          case '#': // store the objects
+            obstacles.insert({currentWidth, currentHeight});
+            break;
+          case 'A': // State where an obstacle can be added
+            possibleInterventions.insert(std::pair<State, Intervention>{
+              State(currentWidth, currentHeight),
+              Intervention(State(currentWidth, currentHeight), Intervention::Type::ADD)
+            });
+            break;
+//          default: // its an open cell nothing needs to be done
         }
         if (currentWidth == width) break;
 
@@ -387,15 +395,18 @@ class GridWorld {
     std::unordered_set<State, metronome::Hash<State>> newObstacles;
 
     for (auto& state : states) {
-      newObstacles.insert(state);
+      if (isValidState(state)) {
+        newObstacles.insert(state);
+      }
       for (auto& succ : successors(state)) {
         newObstacles.insert(succ.state);
       }
     }
 
-    interventions.reserve(newObstacles.size());
     for (auto obstacle : newObstacles) {
-      interventions.emplace_back(Intervention{obstacle, Intervention::Type::ADD}, interventionCost);
+      if (possibleInterventions.count(obstacle)) {
+        interventions.emplace_back(possibleInterventions.at(obstacle), interventionCost);
+      }
     }
 
     // Identify intervention - does nothing
@@ -532,6 +543,8 @@ class GridWorld {
   unsigned int width;
   unsigned int height;
   std::unordered_set<State, typename metronome::Hash<State>> obstacles;
+  /** Possible interventions in this domain */
+  std::unordered_map<State, Intervention, typename metronome::Hash<State>> possibleInterventions;
   State startLocation{};
   std::unordered_set<State, typename metronome::Hash<State>> goalLocations;
   /** vector separate from goalLocations to guarantee deterministic ordering when returned in instance method */

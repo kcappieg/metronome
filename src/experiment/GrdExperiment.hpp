@@ -84,7 +84,7 @@ public:
       const auto iterationDuration = iterationEndTime - iterationStartTime;
       grdPlanningTime += iterationDuration;
 
-      if (interventions.size() > 1) {
+      if (interventions.size() > 0) {
         // recreate deque
         cachedInterventions = std::deque<InterventionBundle<Domain>>(interventions.begin(), interventions.end());
       } else if (cachedInterventions.size() == 0) {
