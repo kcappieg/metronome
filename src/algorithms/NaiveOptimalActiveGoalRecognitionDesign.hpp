@@ -23,6 +23,8 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
+
 namespace metronome {
   template<typename Domain>
   class NaiveOptimalActiveGoalRecognitionDesign final : public GoalRecognitionDesignPlanner<Domain> {
@@ -272,6 +274,11 @@ namespace metronome {
       double score = 1.0;
       std::optional<InterventionBundle<Domain>> argminIntervention{};
       for (InterventionBundle interventionBundle : interventions) {
+        // ignore identity intervention
+        if (interventionBundle.intervention == domain->getIdentityIntervention()) {
+          continue;
+        }
+
         std::optional<Patch> optionalDomainPatch =
                 domain->applyIntervention(interventionBundle.intervention, simulatedStateNode->state);
         // invalid intervention - we will not consider it
@@ -281,6 +288,7 @@ namespace metronome {
         const Patch& domainPatch = optionalDomainPatch.value();
         // copy goals to optimal cost map so we can verify they don't change
         std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
+        std::unordered_map<State, size_t , StateHash> goalHypothesisCopy(simulatedStateNode->goalsToPlanCount);
         recomputeOptimalInfo(rootState);
 
         // detect change in optimal cost(s)
@@ -295,10 +303,22 @@ namespace metronome {
           }
         }
         // detect if the simulated state is no longer on an optimal path
-        // If not, this intervention is no good in this trial
-        if (simulatedStateNode->goalBackupIteration != recomputeOptimalIteration) {
+        // or if goals have been removed from simulated state.
+        // If either, this intervention is no good in this trial
+        if (simulatedStateNode->goalBackupIteration != recomputeOptimalIteration
+            || goalHypothesisCopy.size() != simulatedStateNode->goalsToPlanCount.size()) {
           invalidIntervention = true;
         }
+
+        // Detecting if the intervention had any effect on the current simulated node.
+        // If not, we can ignore this intervention as it does not affect this branch
+        bool anyChange = false;
+        for (auto& entry : goalHypothesisCopy) {
+          if (entry.second != simulatedStateNode->goalsToPlanCount[entry.first]) {
+            anyChange = true;
+          }
+        }
+        if (!anyChange) invalidIntervention = true;
 
         if (invalidIntervention) {
           // intervention changed the optimal cost to some goal. Reverse and continue
@@ -309,6 +329,9 @@ namespace metronome {
 
         // descend
         double trialScore = actionTrial(simulatedStateNode, rootState);
+        #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
+          LOG(DEBUG) << pad(depth) << "IT " << interventionBundle.intervention << ": " << trialScore;
+        #endif
         if (trialScore < score) {
           score = trialScore;
           argminIntervention.emplace(interventionBundle);
@@ -341,6 +364,9 @@ namespace metronome {
         double probability = entry.second;
 
         double trial = interventionTrial(successor, rootState).first;
+        #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
+          LOG(DEBUG) << pad(depth) << "AT " << entry.first->state << ": " << trial << " (Prob " << entry.second << ")";
+        #endif
         score += probability * trial;
       }
 
@@ -517,6 +543,18 @@ namespace metronome {
           predecessor->open = true;
         }
       }
+    }
+
+    /*****************************************
+            Log Helpers
+    *****************************************/
+    std::string pad(uint16_t depth) {
+      std::ostringstream str;
+      for (uint64_t i = 0; i < depth; i++) {
+        str << "  ";
+      }
+      str << "d" << depth << " ";
+      return str.str();
     }
 
     /*****************************************

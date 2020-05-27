@@ -142,6 +142,10 @@ class GridWorld {
       return seed;
     }
 
+    bool operator==(const Intervention& other) const {
+      return other.interventionType == interventionType && other.obstacle == obstacle;
+    }
+
     friend std::ostream& operator<<(std::ostream& stream, const GridWorld::Intervention& intervention) {
       std::ostringstream interventionStr;
       switch(intervention.interventionType) {

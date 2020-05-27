@@ -218,7 +218,7 @@ private:
       LOG(ERROR) << "Invalid action " << action << " from: " << state;
       throw MetronomeException("Invalid action. Subject plan is corrupt.");
     }
-    LOG(INFO) << "> action from: " << state;
+    LOG(INFO) << "> action from: " << state << " to " << *nextState;
 
     return nextState.value();
   }
