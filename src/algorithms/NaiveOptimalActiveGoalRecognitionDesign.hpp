@@ -23,7 +23,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
 
 namespace metronome {
   template<typename Domain>
@@ -139,6 +139,11 @@ namespace metronome {
       Cost actionCost;
     };
 
+    // debug methods
+    Node getNode(uint64_t x, uint64_t y) {
+      return *nodes[State(x, y)];
+    }
+
     /*****************************************
             Algorithm methods
             Methods with formal definitions
@@ -247,9 +252,11 @@ namespace metronome {
       if (depth > 1000) return {1, {}};
       depth++;
 
-      // block-scope optimalPlanStates so that it is de-allocated after use
       std::vector<InterventionBundle<Domain>> interventions;
-      {
+      if (identityTrial) {
+        // for identity trials, we are only simulating subject actions
+        interventions.push_back(Base::getIdentityIntervention(*domain));
+      } else {
         // get states relevant to the subject state
         std::unordered_set<State, StateHash> optimalPlanStates {simulatedStateNode->state};
         std::queue<Node*> queue {{simulatedStateNode}};
@@ -274,64 +281,76 @@ namespace metronome {
       double score = 1.0;
       std::optional<InterventionBundle<Domain>> argminIntervention{};
       for (InterventionBundle interventionBundle : interventions) {
-        // ignore identity intervention
+        // Set identity trial flag
+        bool identityTrialStart = false;
         if (interventionBundle.intervention == domain->getIdentityIntervention()) {
-          continue;
+          identityTrial = true;
+          identityTrialStart = true;
         }
 
         std::optional<Patch> optionalDomainPatch =
                 domain->applyIntervention(interventionBundle.intervention, simulatedStateNode->state);
         // invalid intervention - we will not consider it
         if (!optionalDomainPatch.has_value()) continue;
-
-        // grab patch, repair optimal info
+        // grab patch
         const Patch& domainPatch = optionalDomainPatch.value();
-        // copy goals to optimal cost map so we can verify they don't change
-        std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
-        std::unordered_map<State, size_t , StateHash> goalHypothesisCopy(simulatedStateNode->goalsToPlanCount);
-        recomputeOptimalInfo(rootState);
 
-        // detect change in optimal cost(s)
-        bool invalidIntervention = false;
-        for (auto& entry : goalsToOptimalCostCopy) {
-          Cost originalCost = entry.second;
-          Cost newCost = goalsToOptimalCost[entry.first];
-
-          if (originalCost != newCost) {
-            invalidIntervention = true;
-            break;
-          }
-        }
-        // detect if the simulated state is no longer on an optimal path
-        // or if goals have been removed from simulated state.
-        // If either, this intervention is no good in this trial
-        if (simulatedStateNode->goalBackupIteration != recomputeOptimalIteration
-            || goalHypothesisCopy.size() != simulatedStateNode->goalsToPlanCount.size()) {
-          invalidIntervention = true;
-        }
-
-        // Detecting if the intervention had any effect on the current simulated node.
-        // If not, we can ignore this intervention as it does not affect this branch
-        bool anyChange = false;
-        for (auto& entry : goalHypothesisCopy) {
-          if (entry.second != simulatedStateNode->goalsToPlanCount[entry.first]) {
-            anyChange = true;
-          }
-        }
-        if (!anyChange) invalidIntervention = true;
-
-        if (invalidIntervention) {
-          // intervention changed the optimal cost to some goal. Reverse and continue
-          domain->reversePatch(domainPatch, simulatedStateNode->state);
+        // repair optimal info, but only if it is not an identity intervention
+        if (!identityTrial) {
+          // copy goals to optimal cost map so we can verify they don't change
+          std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
+          std::unordered_map<State, size_t , StateHash> goalHypothesisCopy(simulatedStateNode->goalsToPlanCount);
           recomputeOptimalInfo(rootState);
-          continue;
+
+          // detect change in optimal cost for any goal
+          bool invalidIntervention = false;
+          for (auto& entry : goalsToOptimalCostCopy) {
+            Cost originalCost = entry.second;
+            Cost newCost = goalsToOptimalCost[entry.first];
+
+            if (originalCost != newCost) {
+              invalidIntervention = true;
+              break;
+            }
+          }
+          // detect if the simulated state is no longer on an optimal path
+          // or if goals have been removed from simulated state.
+          // If either, this intervention is no good in this trial
+          if (simulatedStateNode->goalBackupIteration != recomputeOptimalIteration
+              || goalHypothesisCopy.size() != simulatedStateNode->goalsToPlanCount.size()) {
+            invalidIntervention = true;
+          }
+
+          // Detecting if the intervention had any effect on the current simulated node.
+          // If not, we can ignore this intervention as it does not affect this branch
+          bool anyChange = false;
+          for (auto& entry : goalHypothesisCopy) {
+            if (entry.second != simulatedStateNode->goalsToPlanCount[entry.first]) {
+              anyChange = true;
+            }
+          }
+          if (!anyChange) invalidIntervention = true;
+
+          // when intervention deemed invalid, reverse and continue
+          if (invalidIntervention) {
+            domain->reversePatch(domainPatch, simulatedStateNode->state);
+            recomputeOptimalInfo(rootState);
+            continue;
+          }
         }
+
 
         // descend
         double trialScore = actionTrial(simulatedStateNode, rootState);
+
         #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-          LOG(DEBUG) << pad(depth) << "IT " << interventionBundle.intervention << ": " << trialScore;
+        LOG(DEBUG) << pad(depth) << "IT " << interventionBundle.intervention << ": " << trialScore;
+        // condition here so getNode compiles
+        if (depth == 1000000) {
+          LOG(INFO) << getNode(0, 0).toString();
+        }
         #endif
+
         if (trialScore < score) {
           score = trialScore;
           argminIntervention.emplace(interventionBundle);
@@ -339,7 +358,12 @@ namespace metronome {
 
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
-        recomputeOptimalInfo(rootState);
+        if (!identityTrial) {
+          recomputeOptimalInfo(rootState);
+        }
+        if (identityTrialStart) {
+          identityTrial = false;
+        }
       }
 
       depth--;
@@ -571,6 +595,11 @@ namespace metronome {
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
     uint64_t recomputeOptimalIteration = 0;
     int32_t depth = 0;
+    /**
+     * Flag is set when an identity action is trialed.
+     * Signals that a trial is seeing what happens if no more interventions are executed
+     */
+    bool identityTrial = false;
 
     Domain* domain = nullptr;
   };

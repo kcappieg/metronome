@@ -10,5 +10,5 @@
   "seed": 12521,
   "goalPriors": [0.33, 0.33, 0.34],
   "domainName": "GRID_WORLD",
-  "domainPath": "grd-3goals/small.vw"
+  "domainPath": "grd-3goals/uniform10x10/uniform10_10-4.vw"
 }
