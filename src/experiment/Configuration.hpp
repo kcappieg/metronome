@@ -61,6 +61,9 @@ static const std::string INTERVENTION_COST{"interventionCost"};
 static const std::string GOAL_PRIORS{"goalPriors"};
 static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
+// Optimal GRD
+static const std::string MAX_DEPTH{"maxDepth"};
+
 // Cluster RTS
 static const std::string CLUSTER_NODE_LIMIT{"clusterNodeLimit"};
 static const std::string CLUSTER_DEPTH_LIMIT{"clusterDepthLimit"};

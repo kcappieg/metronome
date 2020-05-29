@@ -23,7 +23,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
 
 namespace metronome {
   template<typename Domain>
@@ -39,7 +39,8 @@ namespace metronome {
     using Patch = typename Domain::Patch;
 
     NaiveOptimalActiveGoalRecognitionDesign(const Domain& domain, const Configuration& config)
-        : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>){
+        : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>),
+          maxDepth(config.getLong(MAX_DEPTH, std::numeric_limits<uint32_t>::max())) {
       if (config.hasMember(GOAL_PRIORS)) {
         std::vector<double> goalPriors = config.getDoubles(GOAL_PRIORS);
 
@@ -249,7 +250,11 @@ namespace metronome {
         return {g / cStar, {}};
       }
 
-      if (depth > 1000) return {1, {}};
+      bool depthLimitReached = false;
+      if (!identityTrial && (depth / 2) + 1 > maxDepth) {
+        depthLimitReached = true;
+        identityTrial = true;
+      }
       depth++;
 
       std::vector<InterventionBundle<Domain>> interventions;
@@ -366,6 +371,10 @@ namespace metronome {
         }
       }
 
+      // reset identity trial flag
+      if (depthLimitReached) {
+        identityTrial = false;
+      }
       depth--;
       return {score, argminIntervention};
     }
@@ -376,8 +385,6 @@ namespace metronome {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         return static_cast<double>(simulatedStateNode->g) / static_cast<double>(goalsToOptimalCost[goalState]);
       }
-
-      if (depth > 1000) return 1;
       depth++;
 
       std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities = computeActionProbabilities(simulatedStateNode);
@@ -590,11 +597,12 @@ namespace metronome {
     ObjectPool<Node, Memory::NODE_LIMIT> nodePool;
     std::unordered_map<State, double, StateHash> goalsToPriors;
     std::optional<State> rootState;
+    uint32_t maxDepth = 0;
 
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
     uint64_t recomputeOptimalIteration = 0;
-    int32_t depth = 0;
+    uint32_t depth = 0;
     /**
      * Flag is set when an identity action is trialed.
      * Signals that a trial is seeing what happens if no more interventions are executed
