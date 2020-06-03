@@ -168,13 +168,17 @@ private:
   const State getSubjectGoal(const Configuration& configuration, const Domain& domain) {
     const std::vector<State> goalVector = domain.getGoals();
 
-    // select subject goal from goal prior
-    int64_t seed = configuration.getLong(SEED, 1);
-    std::mt19937 rand(seed);
+    uint64_t goalIndex = 0;
 
-    uint32_t goalIndex = 0;
+    if (configuration.hasMember(SUBJECT_GOAL)) {
+      // explicit goal
+      goalIndex = configuration.getLong(SUBJECT_GOAL);
 
-    if (configuration.hasMember(GOAL_PRIORS)) {
+    } else if (configuration.hasMember(GOAL_PRIORS)) {
+      // select subject goal from goal prior
+      int64_t seed = configuration.getLong(SEED, 1);
+      std::mt19937 rand(seed);
+
       std::vector<double> goalPriors = configuration.getDoubles(GOAL_PRIORS);
       verifyPriors(goalPriors, goalVector);
 
@@ -186,7 +190,7 @@ private:
         sum += goalPriors[++goalIndex];
       }
     } else {
-      throw MetronomeException("No goal priors");
+      throw MetronomeException("No goal priors or explicit goal");
     }
 
     return goalVector[goalIndex];

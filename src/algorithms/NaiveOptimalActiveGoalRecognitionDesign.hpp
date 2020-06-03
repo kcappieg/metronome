@@ -23,7 +23,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
 
 namespace metronome {
   template<typename Domain>
@@ -69,7 +69,12 @@ namespace metronome {
 
       recomputeOptimalInfo(*rootState);
 
-      auto intervention = interventionTrial(nodes[subjectState], *rootState).second;
+      auto trialResult = interventionTrial(
+          nodes[subjectState], *rootState);
+      auto intervention = trialResult.second;
+
+      LOG(DEBUG) << "Intervention score: " << trialResult.first;
+
       domain = nullptr;
 
       depth = 0;

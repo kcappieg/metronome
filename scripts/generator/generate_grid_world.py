@@ -34,10 +34,11 @@ def generate_goals(goals, width, height, start):
 
 
 class SingleObstacleStrategy:
-    def __init__(self, width, height, probability):
+    def __init__(self, width, height, probability, intervention_percentage):
         self.width = width
         self.height = height
         self.probability = probability
+        self.intervention_percentage = intervention_percentage
 
     def generate_goals(self, goals):
         return generate_goals(goals, self.width, self.height, self.get_start())
@@ -51,6 +52,18 @@ class SingleObstacleStrategy:
 
         return obstacle_locations
 
+    def get_interventions(self, obstacle_locations):
+        intervention_locations = set()
+        if self.intervention_percentage is 0.0:
+            return intervention_locations
+
+        for y in range(0, self.height):
+            for x in range(0, self.width):
+                if (x, y) not in obstacle_locations and random.random() < self.intervention_percentage:
+                    intervention_locations.add((x, y))
+
+        return intervention_locations
+
     def get_start(self):
         return 1, 1
 
@@ -59,9 +72,10 @@ class SingleObstacleStrategy:
 
 
 class EnclosureObstacleStrategy:
-    def __init__(self, width, height, probability, sizeBound, widthFactor = 1.0, exits=0, equalLength = False, alignDirections = False):
+    def __init__(self, width, height, probability, intervention_percentage, sizeBound, widthFactor = 1.0, exits=0, equalLength = False, alignDirections = False):
         self.width = width
         self.height = height
+        self.intervention_percentage = intervention_percentage
         self.sizeBound = sizeBound
         self.widthSizeBound = int(max(sizeBound * widthFactor, 1))
         self.exits = exits
@@ -151,6 +165,9 @@ class EnclosureObstacleStrategy:
 
         return obstacle_locations
 
+    def get_interventions(self, obstacle_locations):
+        raise Exception('Interventions not implemented for Enclosure domains')
+
     def get_start(self):
         return 1, 1
 
@@ -163,10 +180,11 @@ class EnclosureObstacleStrategy:
 # Tunnels hug the walls leaving the center of the domain the most
 # cluttered with no tunnels through
 class TunnelsStrategy:
-    def __init__(self, width, height, probability, size_bound, stddev):
+    def __init__(self, width, height, probability, intervention_percentage, size_bound, stddev):
         self.width = width
         self.height = height
         self.probability = probability
+        self.intervention_percentage = intervention_percentage
         self.stddev = stddev
         self.size_bound = size_bound
         self.uniform_generator = SingleObstacleStrategy(width, height, probability)
@@ -214,6 +232,9 @@ class TunnelsStrategy:
                         obstacle_locations.remove(loc)
 
         return obstacle_locations
+
+    def get_interventions(self, obstacle_locations):
+        raise Exception('Interventions not implemented for Tunnel domains')
 
     # In order to maintain clear tunnels at the edges, we track every
     # space that is part of a tunnel. If another tunnel would overlap
@@ -306,6 +327,7 @@ def main(args):
     total = args.total
     goals = args.goals
     obstacle_percentage = args.obstacle_probability
+    intervention_percentage = args.intervention_probability
 
     # Size bound for enclosures calculated using power
     size_bound = max(int(height ** 0.7), 1)
@@ -319,17 +341,17 @@ def main(args):
     strategy = args.strategy
     domain_builder = None
     if strategy == 'single':
-        domain_builder = SingleObstacleStrategy(width, height, obstacle_percentage)
+        domain_builder = SingleObstacleStrategy(width, height, obstacle_percentage, intervention_percentage)
         if args.verbose:
             print('Single Cell obstacle strategy')
 
     elif strategy == 'minima':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, size_bound)
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound)
         if args.verbose:
             print(f'Minima obstacle strategy. Size bound {size_bound}')
 
     elif strategy == 'corridors':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, size_bound,
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound,
                                                     widthFactor=args.corridor_width_factor,
                                                     exits=args.corridor_exits,
                                                     equalLength=True)
@@ -337,7 +359,7 @@ def main(args):
             print(f'Corridors obstacle strategy. Size bound {size_bound}')
 
     elif strategy == 'corridors-aligned':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, size_bound,
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound,
                                                     widthFactor=args.corridor_width_factor,
                                                     exits=args.corridor_exits,
                                                     equalLength=True,
@@ -346,7 +368,7 @@ def main(args):
             print(f'Aligned Corridors obstacle strategy. Size bound {size_bound}')
 
     elif strategy == 'tunnels':
-        domain_builder = TunnelsStrategy(width, height, obstacle_percentage, size_bound,
+        domain_builder = TunnelsStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound,
                                          stddev=args.tunnel_deviation)
 
         if args.verbose:
@@ -381,6 +403,7 @@ def main(args):
         goal_set = domain_builder.generate_goals(goals)
         start_x, start_y = domain_builder.get_start()
         obstacle_locations = domain_builder.get_obstacles()
+        intervention_locations = domain_builder.get_interventions(obstacle_locations)
 
         for y in range(0, height):
             for x in range(0, width):
@@ -392,6 +415,8 @@ def main(args):
                     world += '*'
                 elif (x, y) in obstacle_locations:
                     world += '#'
+                elif (x, y) in intervention_locations:
+                    world += 'A'
                 else:
                     world += '_'
             world += '\n'
@@ -466,6 +491,8 @@ if __name__ == '__main__':
                          help='If tunnels strategy, the standard deviation to be used in the normal distribution for tunnel generation. Higher numbers make it more likely for tunnels to be closer to center')
     parser.add_argument('-f', '--filter', default=None, action='store_true',
                         help='Filter generated domains to only solvable. Assumes a previous build of Metronome. Executes A_STAR on each domain.')
+    parser.add_argument('-i', '--intervention-probability', default=0.0, type=float,
+                        help='Probability of possible intervention in any given clear cell')
 
     # End argument definition
 

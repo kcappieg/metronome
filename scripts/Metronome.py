@@ -296,7 +296,7 @@ def distributed_execution(configurations, resource_dir=None):
         end_experiment_notification
 
     # executor = create_remote_distlre_executor()
-    executor = create_local_distlre_executor(8)
+    executor = create_local_distlre_executor(6)
 
     futures = []
     progress_bar = tqdm(total=len(configurations), smoothing=0.1)
@@ -308,7 +308,7 @@ def distributed_execution(configurations, resource_dir=None):
         executable = '/'.join([cwd, 'build/release/Metronome'])
         resources = resource_dir
         if (resources is None):
-            resources = '/'.join([cwd, 'resources/'])
+            resources = '/'.join([cwd, 'resources/input/vacuum/'])
 
         json_configuration = f'{json.dumps(configuration)}\n\n'
 
@@ -318,8 +318,8 @@ def distributed_execution(configurations, resource_dir=None):
         task = Task(command=command, meta=None, time_limit=90, memory_limit=10)
         task.input = json_configuration.encode()
 
-#         print(task.command)
-#         print(task.input)
+        # print(task.command)
+        # print(task.input)
 
         future = executor.submit(task)
         future.add_done_callback(lambda _: progress_bar.update())
@@ -382,6 +382,7 @@ def construct_results(futures):
             })
             continue
 
+        print(raw_output[result_offset])
         output = json.loads(raw_output[result_offset])
         results.append(output)
     return results
@@ -482,38 +483,7 @@ def save_results(results_json, file_name):
 
 
 def label_algorithms(configurations):
-    for configuration in configurations:
-        if configuration['algorithmName'] == 'CLUSTER_RTS':
-            configuration['algorithmLabel'] = configuration['algorithmName'] \
-                                              + ' limit: ' \
-                                              + str(configuration[
-                                                        'clusterDepthLimit']) \
-                                              + ' cache: ' \
-                                              + str(configuration[
-                                                        'extractionCacheSize'])
-
-        if configuration['algorithmName'] == 'TIME_BOUNDED_A_STAR':
-            configuration['algorithmLabel'] = configuration['algorithmName'] \
-                                              + ' weight: ' \
-                                              + str(configuration[
-                                                        'weight'])
-            
-            
-def label_domains(configurations):
-    for configuration in configurations:
-        if 'tunnels' in configuration['domainPath']:
-            if '15000' in configuration['domainPath']:
-                configuration['domainLabel'] = 15000
-            elif '12000' in configuration['domainPath']:
-                configuration['domainLabel'] = 12000
-            elif '2000' in configuration['domainPath']:
-                configuration['domainLabel'] = 2000
-            elif '5000' in configuration['domainPath']:
-                configuration['domainLabel'] = 5000
-            elif '10000' in configuration['domainPath']:
-                configuration['domainLabel'] = 10000
-            else:
-                configuration['domainLabel'] = 1000
+    pass
 
 
 def main():
@@ -527,13 +497,7 @@ def main():
         raise Exception('Build failed.')
     print('Build complete!')
 
-    file_name = 'results/lss_grid_3k_M.json'
-    # c 1 - Will's 3k, 2 - 1-8k, 3 - Will's again, 4 - 1-8 large, 5 - low duration local, 7 - growth
-    # 13 1x - 14, 15, 16 3x - 17 new stuff (crts rates) - 18 GBFS
-    # 19 dao(50) - 19+ dao(50) A* - 20 same with CRTS 1.001 - 23 - TBA(1,2) backtrack 24 - TBA(1.5)
-    
-    # d 1: dao 2: stp10(tba(1.5,2)) 3: stp10(tba(1.5,2,8), crts(lot)) 5:stp100(complete) 6:stp100(gbfs)
-    # f 5 wo gbfs, 6 gbfs 7 all baseline 8 longer (essentials)
+    file_name = 'results/grd-test.json'
 
     if recycle:
         # Load previous configurations
@@ -545,10 +509,12 @@ def main():
     else:
         # Generate new domain configurations
 #         configurations = generate_vacuum_world()
-        configurations = generate_grid_world() # * 3
-#         configurations = generate_tile_puzzle()
+#         configurations = generate_grid_world() # * 3
+        configurations = None
+        with open('resources/configuration/grd-trials.json') as trials_file:
+            configurations = json.load(trials_file)
+
         label_algorithms(configurations)
-        label_domains(configurations)
         # configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))

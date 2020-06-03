@@ -59,6 +59,7 @@ static const std::string COMMITMENT_MULTIPLE{"MULTIPLE"};
 // GRD
 static const std::string INTERVENTION_COST{"interventionCost"};
 static const std::string GOAL_PRIORS{"goalPriors"};
+static const std::string SUBJECT_GOAL{"subjectGoal"};
 static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
 // Optimal GRD
