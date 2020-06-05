@@ -129,8 +129,8 @@ class Result {
     resultDocument.AddMember("configuration", configurationValue, allocator);
 
     StringBuffer buffer;
-    Writer<StringBuffer> writer(buffer);
-//    PrettyWriter<StringBuffer> writer(buffer);
+//    Writer<StringBuffer> writer(buffer);
+    PrettyWriter<StringBuffer> writer(buffer);
     resultDocument.Accept(writer);
     return buffer.GetString();
   }

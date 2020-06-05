@@ -23,7 +23,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
 
 namespace metronome {
   template<typename Domain>
@@ -294,6 +294,9 @@ namespace metronome {
         // Set identity trial flag
         bool identityTrialStart = false;
         if (interventionBundle.intervention == domain->getIdentityIntervention()) {
+          // if there are still things we can do, let's not start an identity trial
+          if (interventions.size() > 1) continue;
+
           identityTrial = true;
           identityTrialStart = true;
         }
@@ -399,9 +402,21 @@ namespace metronome {
         Node* successor = entry.first;
         double probability = entry.second;
 
-        double trial = interventionTrial(successor, rootState).first;
+        double trial = 1.0;
+        bool noOp = false;
+        // this means that the state is a goal state
+        if (entry.first->state == simulatedStateNode->state) {
+          noOp = true;
+        } else {
+          trial = interventionTrial(successor, rootState).first;
+        }
+
         #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-          LOG(DEBUG) << pad(depth) << "AT " << entry.first->state << ": " << trial << " (Prob " << entry.second << ")";
+          LOG(DEBUG) << pad(depth) << "AT "
+                   << (noOp ? "NO-OP - subject reached goal " : "")
+                   << entry.first->state
+                   << ": " << trial
+                   << " (Prob " << entry.second << ")";
         #endif
         score += probability * trial;
       }
@@ -418,6 +433,7 @@ namespace metronome {
      */
     std::unordered_map<Node*, double, metronome::Hash<Node>> computeActionProbabilities(Node* simulatedStateNode) {
       std::unordered_map<State, double, StateHash> adjustedGoalPriors{};
+      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities{};
       double reachablePriorSum = 0.0;
       for (auto& entry : simulatedStateNode->goalsToPlanCount) {
         const State& goal = entry.first;
@@ -427,9 +443,15 @@ namespace metronome {
       }
       for (auto& entry : adjustedGoalPriors) {
         adjustedGoalPriors[entry.first] = entry.second / reachablePriorSum;
+
+        // special check for if this state is a goal - we say the subject
+        // will stay put and we assign the goals probability to it
+        // This might happen if plans to other goals could pass through it
+        if (domain->isGoal(simulatedStateNode->state, entry.first)) {
+          actionProbabilities[simulatedStateNode] = adjustedGoalPriors[entry.first];
+        }
       }
 
-      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities{};
       // for each action
       for (Edge& successorEdge : simulatedStateNode->successors) {
         // if g does not increase, the subject would not
