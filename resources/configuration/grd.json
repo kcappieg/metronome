@@ -11,5 +11,5 @@
   "goalPriors": [0.5, 0.5],
   "maxDepth": 10,
   "domainName": "GRID_WORLD",
-  "domainPath": "grd/small.vw"
+  "domainPath": "grd/small2.vw"
 }

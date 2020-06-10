@@ -23,7 +23,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 2
 
 namespace metronome {
   template<typename Domain>
@@ -65,15 +65,30 @@ namespace metronome {
         *rootState = domain->getStartState();
       }
 
+      if (!potentialOutcomes.empty()) {
+        bool transitioned = false;
+        for (ActionProbability& actionResult : potentialOutcomes) {
+          if (actionResult.successor->state == subjectState) {
+            goalsToPriors = actionResult.conditionedGoalPriors;
+            transitioned = true;
+          }
+        }
+        if (!transitioned) {
+          throw MetronomeException(
+              "Unexpected transition! The Subject transitioned to a state the Observer did not expect");
+        }
+      }
+
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
       recomputeOptimalInfo(*rootState);
 
-      auto trialResult = interventionTrial(
+      InterventionTrialResult trialResult = interventionTrial(
           nodes[subjectState], *rootState);
-      auto intervention = trialResult.second;
+      std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
+      potentialOutcomes = trialResult.potentialSubjectActionOutcomes;
 
-      LOG(DEBUG) << "Intervention score: " << trialResult.first;
+      LOG(DEBUG) << "Intervention score: " << trialResult.score;
 
       domain = nullptr;
 
@@ -143,6 +158,25 @@ namespace metronome {
       Node* from;
       Node* to;
       Cost actionCost;
+    };
+
+    // Contains probability of action and resulting conditioned goal probability
+    struct ActionProbability {
+      Node* successor;
+      double probabilityOfAction;
+      /** Goal priors conditioned on this action being taken */
+      std::unordered_map<State, double, StateHash> conditionedGoalPriors{};
+    };
+
+    struct InterventionTrialResult {
+      double score;
+      std::optional<InterventionBundle<Domain>> bestIntervention;
+      std::vector<ActionProbability> potentialSubjectActionOutcomes;
+    };
+
+    struct ActionTrialResult {
+      double score;
+      std::vector<ActionProbability> potentialSubjectActionOutcomes;
     };
 
     // debug methods
@@ -245,15 +279,17 @@ namespace metronome {
 
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
-    std::pair<double, std::optional<InterventionBundle<Domain>>> interventionTrial(
+    InterventionTrialResult interventionTrial(
             Node* simulatedStateNode, const State& rootState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
         double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
-        return {g / cStar, {}};
+        return {g / cStar, {}, {}};
       }
+
+      InterventionTrialResult trialResult{1.0, {}, {}};
 
       bool depthLimitReached = false;
       if (!identityTrial && (depth / 2) + 1 > maxDepth) {
@@ -288,15 +324,10 @@ namespace metronome {
         interventions = domain->interventions({optimalPlanStates.begin(), optimalPlanStates.end()});
       }
 
-      double score = 1.0;
-      std::optional<InterventionBundle<Domain>> argminIntervention{};
       for (InterventionBundle interventionBundle : interventions) {
         // Set identity trial flag
         bool identityTrialStart = false;
         if (interventionBundle.intervention == domain->getIdentityIntervention()) {
-          // if there are still things we can do, let's not start an identity trial
-          if (interventions.size() > 1) continue;
-
           identityTrial = true;
           identityTrialStart = true;
         }
@@ -354,19 +385,23 @@ namespace metronome {
 
 
         // descend
-        double trialScore = actionTrial(simulatedStateNode, rootState);
+        ActionTrialResult actionTrialResult = actionTrial(simulatedStateNode, rootState);
 
         #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-        LOG(DEBUG) << pad(depth) << "IT " << interventionBundle.intervention << ": " << trialScore;
+        LOG(DEBUG) << pad(depth) << "IT "
+                   << interventionBundle.intervention
+                   << ": " << actionTrialResult.score;
         // condition here so getNode compiles
         if (depth == 1000000) {
           LOG(INFO) << getNode(0, 0).toString();
         }
         #endif
 
-        if (trialScore < score) {
-          score = trialScore;
-          argminIntervention.emplace(interventionBundle);
+        if (actionTrialResult.score < trialResult.score) {
+          trialResult.score = actionTrialResult.score;
+          trialResult.bestIntervention.emplace(interventionBundle);
+          trialResult.potentialSubjectActionOutcomes =
+              std::move(actionTrialResult.potentialSubjectActionOutcomes);
         }
 
         // reverse patch, repair optimal info
@@ -384,99 +419,163 @@ namespace metronome {
         identityTrial = false;
       }
       depth--;
-      return {score, argminIntervention};
+      return trialResult;
     }
 
-    double actionTrial(Node* simulatedStateNode, const State& rootState) {
+    ActionTrialResult actionTrial(Node* simulatedStateNode, const State& rootState) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
-        return static_cast<double>(simulatedStateNode->g) / static_cast<double>(goalsToOptimalCost[goalState]);
+        double g = static_cast<double>(simulatedStateNode->g);
+        double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
+        return {g / cStar, {}};
       }
       depth++;
 
-      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities = computeActionProbabilities(simulatedStateNode);
-      double score = 0.0;
+      ActionTrialResult trialResult {
+          0.0,
+          computeActionProbabilities(simulatedStateNode, goalsToPriors)
+      };
 
-      for (auto& entry : actionProbabilities) {
-        Node* successor = entry.first;
-        double probability = entry.second;
+      // copy goals to priors prior to modifying
+      std::unordered_map<State, double, StateHash> goalsToPriorsBak(goalsToPriors);
 
-        double trial = 1.0;
+      for (const ActionProbability& actionResults : trialResult.potentialSubjectActionOutcomes) {
+        Node* successor = actionResults.successor;
+        double probability = actionResults.probabilityOfAction;
+
+        double actionScore = 1.0;
         bool noOp = false;
         // this means that the state is a goal state
-        if (entry.first->state == simulatedStateNode->state) {
+        if (successor->state == simulatedStateNode->state) {
           noOp = true;
         } else {
-          trial = interventionTrial(successor, rootState).first;
+          // copy-assign
+          goalsToPriors = actionResults.conditionedGoalPriors;
+          actionScore = interventionTrial(successor, rootState).score;
         }
 
-        #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-          LOG(DEBUG) << pad(depth) << "AT "
+#if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
+        LOG(DEBUG) << pad(depth) << "AT "
                    << (noOp ? "NO-OP - subject reached goal " : "")
-                   << entry.first->state
-                   << ": " << trial
-                   << " (Prob " << entry.second << ")";
-        #endif
-        score += probability * trial;
+                   << successor->state
+                   << ": " << actionScore
+                   << " (Prob " << probability << ")";
+#if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE > 1
+        std::stringstream sstream{};
+        for (auto& entry : actionResults.conditionedGoalPriors) {
+          sstream << entry.first << " - " << entry.second << "; ";
+        }
+
+        LOG(DEBUG) << "_" << pad(depth) << "Goal Priors at this level: " << sstream.str();
+#endif
+#endif
+        trialResult.score += probability * actionScore;
       }
 
+      // restore previous goals-to-priors
+      goalsToPriors = std::move(goalsToPriorsBak);
+
       depth--;
-      return score;
+      return trialResult;
     }
 
     /**
      * Computes probability of every valid successor of the simulated state node.
      * Returns map of successor state to its probability
      * @param simulatedStateNode
+     * @param conditionedGoalsToPriors Map of goals to probabilities. Probability
+     * is expected to be conditioned on the sequence of actions the subject has
+     * taken thus far (in the simulation)
      * @return
      */
-    std::unordered_map<Node*, double, metronome::Hash<Node>> computeActionProbabilities(Node* simulatedStateNode) {
-      std::unordered_map<State, double, StateHash> adjustedGoalPriors{};
-      std::unordered_map<Node*, double, metronome::Hash<Node>> actionProbabilities{};
-      double reachablePriorSum = 0.0;
-      for (auto& entry : simulatedStateNode->goalsToPlanCount) {
-        const State& goal = entry.first;
+    std::vector<ActionProbability> computeActionProbabilities(
+        Node* simulatedStateNode,
+        std::unordered_map<State, double, StateHash>& conditionedGoalsToPriors) {
 
-        adjustedGoalPriors[goal] = goalsToPriors[goal];
-        reachablePriorSum += goalsToPriors[goal];
-      }
-      for (auto& entry : adjustedGoalPriors) {
-        adjustedGoalPriors[entry.first] = entry.second / reachablePriorSum;
+      std::vector<ActionProbability> actionResults{};
 
-        // special check for if this state is a goal - we say the subject
-        // will stay put and we assign the goals probability to it
-        // This might happen if plans to other goals could pass through it
-        if (domain->isGoal(simulatedStateNode->state, entry.first)) {
-          actionProbabilities[simulatedStateNode] = adjustedGoalPriors[entry.first];
+      // special check for if this state is a goal - we say the subject
+      // will stay put and we assign the goals probability to it
+      // This might happen if plans to other goals could pass through it
+      if (domain->isGoal(simulatedStateNode->state)) {
+        actionResults.emplace_back();
+        ActionProbability& actionResult = actionResults.back();
+        actionResult.successor = simulatedStateNode;
+
+        for (auto& entry : conditionedGoalsToPriors) {
+          // if this is the goal, it has probability one. The action has
+          // probability equal to the prior
+          if (domain->isGoal(simulatedStateNode->state, entry.first)) {
+            actionResult.conditionedGoalPriors[entry.first] = 1.0;
+            actionResult.probabilityOfAction = entry.second;
+          } else {
+            actionResult.conditionedGoalPriors[entry.first] = 0.0;
+          }
         }
       }
 
-      // for each action
+      // for each action, but we only care about the successors
       for (Edge& successorEdge : simulatedStateNode->successors) {
         // if g does not increase, the subject would not
         // transition from the simulated state to this successor via an optimal plan
         if (successorEdge.to->g <= simulatedStateNode->g) continue;
 
         // this means the successor is not on any optimal plan, so we can skip
-        if (simulatedStateNode->goalBackupIteration != successorEdge.to->goalBackupIteration) continue;
+        if (simulatedStateNode->goalBackupIteration !=
+            successorEdge.to->goalBackupIteration) {
+          continue;
+        }
 
         // this means the state is invalid (possibly due to prior intervention)
         if (!domain->isValidState(successorEdge.to->state)) continue;
 
-        actionProbabilities[successorEdge.to] = 0.0;
+        actionResults.emplace_back();
+        ActionProbability& actionResult = actionResults.back();
+        actionResult.successor = successorEdge.to;
+        // initialize conditioned goal priors to 0.0
+        for (auto& entry : conditionedGoalsToPriors) {
+          actionResult.conditionedGoalPriors[entry.first] = 0.0;
+        }
 
+        actionResult.probabilityOfAction = 0.0;
+
+        double adjustedSum = 0.0;
         // cycle through goal hypothesis of successor
-        for (auto& entry : successorEdge.to->goalsToPlanCount) {
+        for (auto& hypothesisEntry : actionResult.successor->goalsToPlanCount) {
+          // sanity checks
+          assert(actionResult.conditionedGoalPriors.count(hypothesisEntry.first) == 1);
+          assert(conditionedGoalsToPriors.count(hypothesisEntry.first) == 1);
+
+          /** calculates the fraction of plans to this goal that pass through this action */
+          double fractionOfPlansForGoal =
+              (double)hypothesisEntry.second /
+              (double)simulatedStateNode->goalsToPlanCount[hypothesisEntry.first];
+
           // Add to the probability of this action:
-            // adjusted goal prior * fraction of plans from simulated node to the goal that pass through successor
-          actionProbabilities[successorEdge.to] +=
-                  adjustedGoalPriors[entry.first] *
-                  ((double)entry.second / (double)simulatedStateNode->goalsToPlanCount[entry.first]);
+            // conditioned goal prior * fraction of plans from simulated
+            // node to the goal that pass through successor
+          actionResult.probabilityOfAction +=
+              conditionedGoalsToPriors[hypothesisEntry.first] * fractionOfPlansForGoal;
+
+          // probability of the considered goal conditioned on the agent taking this action
+          double conditionedProbability =
+              fractionOfPlansForGoal * conditionedGoalsToPriors[hypothesisEntry.first];
+
+          actionResult.conditionedGoalPriors[hypothesisEntry.first] = conditionedProbability;
+          adjustedSum += conditionedProbability;
+        }
+
+        // Finally, adjust goal priors based on on the sum of conditioned
+        // probabilities
+        if (adjustedSum > 0.0) {
+          for (auto& entry : conditionedGoalsToPriors) {
+            actionResult.conditionedGoalPriors[entry.first] /= adjustedSum;
+          }
         }
       }
 
-      return actionProbabilities;
+      return actionResults;
     }
 
     /*****************************************
@@ -630,6 +729,12 @@ namespace metronome {
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
     uint64_t recomputeOptimalIteration = 0;
     uint32_t depth = 0;
+    /**
+     * Vector holds predicted outcomes given an intervention.
+     * We will use this to update goal priors based on the action the subject
+     * took
+     */
+    std::vector<ActionProbability> potentialOutcomes;
     /**
      * Flag is set when an identity action is trialed.
      * Signals that a trial is seeing what happens if no more interventions are executed
