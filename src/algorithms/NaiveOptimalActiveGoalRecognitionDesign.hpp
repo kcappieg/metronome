@@ -23,7 +23,8 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 2
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 3
 
 namespace metronome {
   template<typename Domain>
@@ -78,6 +79,15 @@ namespace metronome {
               "Unexpected transition! The Subject transitioned to a state the Observer did not expect");
         }
       }
+
+#if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
+      std::stringstream sstream{};
+      for (auto& entry : goalsToPriors) {
+        sstream << entry.first << " - " << entry.second << "; ";
+      }
+      LOG(DEBUG) << "Goal Priors at iteration " << Base::iterationCount
+                 << ": " << sstream.str();
+#endif
 
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
@@ -365,16 +375,6 @@ namespace metronome {
             invalidIntervention = true;
           }
 
-          // Detecting if the intervention had any effect on the current simulated node.
-          // If not, we can ignore this intervention as it does not affect this branch
-          bool anyChange = false;
-          for (auto& entry : goalHypothesisCopy) {
-            if (entry.second != simulatedStateNode->goalsToPlanCount[entry.first]) {
-              anyChange = true;
-            }
-          }
-          if (!anyChange) invalidIntervention = true;
-
           // when intervention deemed invalid, reverse and continue
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
@@ -387,15 +387,17 @@ namespace metronome {
         // descend
         ActionTrialResult actionTrialResult = actionTrial(simulatedStateNode, rootState);
 
-        #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-        LOG(DEBUG) << pad(depth) << "IT "
-                   << interventionBundle.intervention
-                   << ": " << actionTrialResult.score;
-        // condition here so getNode compiles
-        if (depth == 1000000) {
-          LOG(INFO) << getNode(0, 0).toString();
+#if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
+        if (depth <= NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH) {
+          LOG(DEBUG) << pad(depth) << "IT "
+                     << interventionBundle.intervention
+                     << ": " << actionTrialResult.score;
+          // condition here so getNode compiles
+          if (depth == 1000000) {
+            LOG(INFO) << getNode(0, 0).toString();
+          }
         }
-        #endif
+#endif
 
         if (actionTrialResult.score < trialResult.score) {
           trialResult.score = actionTrialResult.score;
@@ -456,19 +458,21 @@ namespace metronome {
         }
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
-        LOG(DEBUG) << pad(depth) << "AT "
-                   << (noOp ? "NO-OP - subject reached goal " : "")
-                   << successor->state
-                   << ": " << actionScore
-                   << " (Prob " << probability << ")";
+        if (depth <= NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH) {
+          LOG(DEBUG) << pad(depth) << "AT "
+                     << (noOp ? "NO-OP - subject reached goal " : "")
+                     << successor->state
+                     << ": " << actionScore
+                     << " (Prob " << probability << ")";
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE > 1
-        std::stringstream sstream{};
-        for (auto& entry : actionResults.conditionedGoalPriors) {
-          sstream << entry.first << " - " << entry.second << "; ";
-        }
+          std::stringstream sstream{};
+          for (auto& entry : actionResults.conditionedGoalPriors) {
+            sstream << entry.first << " - " << entry.second << "; ";
+          }
 
-        LOG(DEBUG) << "_" << pad(depth) << "Goal Priors at this level: " << sstream.str();
+          LOG(DEBUG) << "_" << pad(depth) << "Goal Priors at this level: " << sstream.str();
 #endif
+        }
 #endif
         trialResult.score += probability * actionScore;
       }

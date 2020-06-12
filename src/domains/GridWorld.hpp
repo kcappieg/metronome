@@ -10,6 +10,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <utils/Hash.hpp>
+#include <utility>
 #include <vector>
 #include "MetronomeException.hpp"
 #include "SuccessorBundle.hpp"
@@ -34,7 +35,7 @@ class GridWorld {
       return actions;
     }
 
-    int relativeX() const {
+    [[nodiscard]] int relativeX() const {
       if (label == 'N') return 0;
       if (label == 'S') return 0;
       if (label == 'W') return -1;
@@ -43,7 +44,7 @@ class GridWorld {
       return 0;
     }
 
-    int relativeY() const {
+    [[nodiscard]] int relativeY() const {
       if (label == 'N') return -1;
       if (label == 'S') return 1;
       if (label == 'W') return 0;
@@ -52,7 +53,7 @@ class GridWorld {
       return 0;
     }
 
-    Action inverse() const {
+    [[nodiscard]] Action inverse() const {
       if (label == 'N') return Action('S');
       if (label == 'S') return Action('N');
       if (label == 'W') return Action('E');
@@ -67,7 +68,7 @@ class GridWorld {
 
     bool operator!=(const Action& rhs) const { return !(rhs == *this); }
 
-    char toChar() const { return label; }
+    [[nodiscard]] char toChar() const { return label; }
 
     friend std::ostream& operator<<(std::ostream& os, const Action& action) {
       os << action.label << " (dx: " << action.relativeX()
@@ -84,9 +85,9 @@ class GridWorld {
     State() : x(0), y(0) {}
     State(unsigned int x, unsigned int y) : x{x}, y{y} {}
     /*Standard getters for the State(x,y)*/
-    unsigned int getX() const { return x; }
-    unsigned int getY() const { return y; }
-    std::size_t hash() const { return x ^ y << 16 ^ y >> 16; }
+    [[nodiscard]] unsigned int getX() const { return x; }
+    [[nodiscard]] unsigned int getY() const { return y; }
+    [[nodiscard]] std::size_t hash() const { return x ^ y << 16 ^ y >> 16; }
 
     bool operator==(const State& state) const {
       return x == state.x && y == state.y;
@@ -124,17 +125,21 @@ class GridWorld {
     enum Type {
       ADD,
       REMOVE,
+      MOVE,
       IDENTITY
     };
 
-    Intervention(const State& state, Type interventionType) : obstacle(state), interventionType(interventionType) {}
-    Intervention(): obstacle{}, interventionType(IDENTITY) {}
+    Intervention(const State& state, Type interventionType)
+        : obstacle(state), action{}, interventionType(interventionType) {}
+    explicit Intervention(const Action& action)
+        : obstacle{}, action(action), interventionType(MOVE) {}
+    Intervention(): obstacle{}, action{}, interventionType(IDENTITY) {}
 
     const State obstacle;
-    /** if true, adding obstacle. if false, removing */
+    const Action action;
     const Type interventionType;
 
-    std::size_t hash() const {
+    [[nodiscard]] std::size_t hash() const {
       size_t seed = 37;
 
       seed = (seed * 17) ^ obstacle.hash();
@@ -158,6 +163,8 @@ class GridWorld {
         case IDENTITY:
           interventionStr << "Identity";
           break;
+        case MOVE:
+          interventionStr << "Move " << intervention.action;
       }
 
       stream << interventionStr.str();
@@ -170,8 +177,8 @@ class GridWorld {
    */
   class Patch {
    public:
-    Patch(const Intervention intervention = {}, const std::vector<State> affectedStates = {})
-      : intervention(intervention), affectedStates(affectedStates) {}
+    explicit Patch(Intervention intervention = {}, std::vector<State> affectedStates = {})
+      : intervention(std::move(intervention)), affectedStates(std::move(affectedStates)) {}
 
     const Intervention intervention;
     const std::vector<State> affectedStates;
@@ -202,13 +209,13 @@ class GridWorld {
     std::stringstream convertHeight(line);
     convertHeight >> height;
 
-    std::optional<State> tempStarState{};
+    std::optional<State> tempStartState{};
 
     while (getline(input, line) && currentHeight < height) {
       for (char it : line) {
         switch (it) {
           case '@': // find the start location
-            tempStarState = State(currentWidth, currentHeight);
+            tempStartState = State(currentWidth, currentHeight);
             break;
           case '*': // found a goal location
             goalLocations.emplace(currentWidth, currentHeight);
@@ -223,7 +230,11 @@ class GridWorld {
               Intervention(State(currentWidth, currentHeight), Intervention::Type::ADD)
             });
             break;
-//          default: // its an open cell nothing needs to be done
+          case 'o':
+            observerLocation = State(currentWidth, currentHeight);
+            break;
+          default: // its an open cell nothing needs to be done
+            break;
         }
         if (currentWidth == width) break;
 
@@ -245,13 +256,13 @@ class GridWorld {
           "configuration.");
     }
 
-    if (!tempStarState.has_value() || goalLocations.size() == 0) {
+    if (!tempStartState.has_value() || goalLocations.empty()) {
       throw MetronomeException(
           "GridWorld unknown start or goal location. Start or goal location is "
           "not defined.");
     }
 
-    startLocation = tempStarState.value();
+    startLocation = tempStartState.value();
     // If only 1 goal, set the singleGoal property
     if (goalLocations.size() == 1) {
       useSingleGoal = true;
@@ -285,11 +296,15 @@ class GridWorld {
     }
   }
 
-  bool isGoal(const State& location, const State& goalLocation) const {
+  static bool isGoal(const State& location, const State& goalLocation) {
     return location == goalLocation;
   }
 
-  const std::vector<State> getGoals() const {
+  /**
+   *
+   * @return copy of goal vector
+   */
+  std::vector<State> getGoals() const {
     return goalVector;
   }
 
@@ -323,12 +338,12 @@ class GridWorld {
 
   State getStartState() const { return startLocation; }
 
-  bool isStart(const State& state) const {
+  [[maybe_unused]] bool isStart(const State& state) const {
     return state.getX() == startLocation.getX() &&
            state.getY() == startLocation.getY();
   }
 
-  Cost distance(const State& state, const State& other) const {
+  static Cost distance(const State& state, const State& other) {
     unsigned int verticalDistance = std::max(other.getY(), state.getY()) -
                                     std::min(other.getY(), state.getY());
     unsigned int horizontalDistance = std::max(other.getX(), state.getX()) -
@@ -354,7 +369,7 @@ class GridWorld {
     return distance(state, other) * actionDuration;
   }
 
-  bool safetyPredicate(const State&) const { return true; }
+  [[maybe_unused]] static bool safetyPredicate(const State&) { return true; }
 
   std::vector<SuccessorBundle<GridWorld>> successors(const State& state) const {
     std::vector<SuccessorBundle<GridWorld>> successors;
@@ -387,30 +402,37 @@ class GridWorld {
   }
 
   /**
-   * Takes a vector of states and returns all interventions applicable to those states
+   * Takes a vector of states and returns all interventions applicable to those states.
+   * Determines applicable actions based on the observer's current location.
    * NOTE: Only supports removing edges (adding obstacles) as of right now. Consider supporting add edges as well
-   * NOTE: This might return a lot of interventions. Efficient algorithms will curate the states passed to this
-   * function
    * @param states
    * @return
    */
   std::vector<InterventionBundle<GridWorld>> interventions(const std::vector<State>& states) const {
     std::vector<InterventionBundle<GridWorld>> interventions;
-    std::unordered_set<State, metronome::Hash<State>> newObstacles;
+    std::unordered_set<State, metronome::Hash<State>> stateInterventions;
+
+    if (!observerLocation.has_value()) {
+      throw MetronomeException("No observer location detected in AGRD setting");
+    }
 
     for (auto& state : states) {
-      if (isValidState(state)) {
-        newObstacles.insert(state);
-      }
-      for (auto& succ : successors(state)) {
-        newObstacles.insert(succ.state);
+      if (isValidState(state) && possibleInterventions.count(state)) {
+        stateInterventions.insert(state);
       }
     }
 
-    for (auto obstacle : newObstacles) {
-      if (possibleInterventions.count(obstacle)) {
-        interventions.emplace_back(possibleInterventions.at(obstacle), interventionCost);
+    // Add all possible movement to intervention vector
+    for (SuccessorBundle<GridWorld>& successor : successors(*observerLocation)) {
+      // If a successor is also a valid obstacle location, add that to interventions
+      if (stateInterventions.count(successor.state)) {
+        interventions.emplace_back(
+            possibleInterventions.at(successor.state),
+            interventionCost);
       }
+
+      interventions.emplace_back(
+          Intervention(successor.action), successor.actionCost);
     }
 
     // Identify intervention - does nothing
@@ -426,14 +448,28 @@ class GridWorld {
    * @param subjectState Current state of subject (checks legal interventions)
    * @return Optional Patch. If blank, the
    */
-  std::optional<Patch> applyIntervention(const Intervention& intervention, const State& subjectState) {
+  [[maybe_unused]] std::optional<Patch> applyIntervention(
+      const Intervention& intervention, const State& subjectState) {
     std::vector<State> affected;
 
     // ignore identity
     if (intervention.interventionType == Intervention::Type::IDENTITY) {
-      return std::optional{Patch({}, {})};
+      return std::optional{Patch()};
     }
 
+    if (intervention.interventionType == Intervention::Type::MOVE) {
+      auto newState = transition(*observerLocation, intervention.action);
+      if (newState.has_value()) {
+        observerLocation = newState;
+        // no states were affected to report to the subject
+        return std::optional{Patch(intervention, {})};
+      } else {
+        // Move not valid. Shouldn't happen, but ignore anyway
+        return {};
+      }
+    }
+
+    // Adding and removing obstacles
     if (intervention.interventionType == Intervention::Type::ADD) {
       // invalid intervention - no value
       if (subjectState == intervention.obstacle) return {};
@@ -452,7 +488,7 @@ class GridWorld {
       affected.emplace_back(bundle.state);
     }
 
-    return std::optional{Patch({intervention}, affected)};
+    return std::optional{Patch(intervention, affected)};
   }
 
   /**
@@ -460,7 +496,7 @@ class GridWorld {
    * @param patch
    * @param subjectState Checking validity of reversal - can't re-add an obstacle on top of a subject
    */
-  void reversePatch(const Patch& patch, const State& subjectState) {
+   [[maybe_unused]] void reversePatch(const Patch& patch, const State& subjectState) {
       if (patch.intervention.interventionType == Intervention::Type::REMOVE) {
         if (subjectState == patch.intervention.obstacle) {
           throw MetronomeException("Attempted to add obstacle in the subject's state");
@@ -469,6 +505,14 @@ class GridWorld {
         obstacles.insert(patch.intervention.obstacle);
       } else if (patch.intervention.interventionType == Intervention::Type::ADD) {
         obstacles.erase(patch.intervention.obstacle);
+      } else if (patch.intervention.interventionType == Intervention::Type::MOVE) {
+        Action reverseAction = patch.intervention.action.inverse();
+        auto newState = transition(*observerLocation, reverseAction);
+        if (newState.has_value()) {
+          observerLocation = newState;
+        } else {
+          throw MetronomeException("Attempted to backtrack the observer agent into an obstacle");
+        }
       }
       // ignore identity
   }
@@ -496,13 +540,9 @@ class GridWorld {
 
   Action getIdentityAction() const { return Action('0'); }
 
-  Intervention getIdentityIntervention() const {
+  static Intervention getIdentityIntervention() {
     return Intervention();
   }
-
-
-  unsigned int getWidth() { return width; }
-  unsigned int getHeight() { return height; }
 
  private:
   void addValidSuccessor(std::vector<SuccessorBundle<GridWorld>>& successors,
@@ -550,6 +590,8 @@ class GridWorld {
   /** Possible interventions in this domain */
   std::unordered_map<State, Intervention, typename metronome::Hash<State>> possibleInterventions;
   State startLocation{};
+  /** Current position of the observer. Part of system state for AGRD setting */
+  std::optional<State> observerLocation{};
   std::unordered_set<State, typename metronome::Hash<State>> goalLocations;
   /** vector separate from goalLocations to guarantee deterministic ordering when returned in instance method */
   std::vector<State> goalVector;
