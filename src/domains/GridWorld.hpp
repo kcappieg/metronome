@@ -446,7 +446,7 @@ class GridWorld {
    * state itself in the affectedStates property
    * @param intervention
    * @param subjectState Current state of subject (checks legal interventions)
-   * @return Optional Patch. If blank, the
+   * @return Optional Patch. If blank, the operation was invalid
    */
   [[maybe_unused]] std::optional<Patch> applyIntervention(
       const Intervention& intervention, const State& subjectState) {
@@ -476,6 +476,8 @@ class GridWorld {
 
       // If no obstacles added, that means it was invalid
       if (!addObstacle(intervention.obstacle)) return {};
+
+      affected.emplace_back(intervention.obstacle);
     } else if (intervention.interventionType == Intervention::Type::REMOVE) {
       // invalid intervention - no value
       if (!isObstacle(intervention.obstacle)) return {};
@@ -483,7 +485,6 @@ class GridWorld {
       obstacles.erase(intervention.obstacle);
     }
 
-    affected.emplace_back(intervention.obstacle);
     for (auto& bundle : successors(intervention.obstacle)) {
       affected.emplace_back(bundle.state);
     }

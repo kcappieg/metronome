@@ -56,7 +56,8 @@ class Domain {
 
     /**
      * Dynamic algorithms sometimes receive information on which states were affected.
-     * This property provides that information for a given intervention
+     * This property provides that information for a given intervention.
+     * Note that these states could be "underspecified" according to the domain semantics
      */
     const std::vector<State> affectedStates;
   };
@@ -80,21 +81,6 @@ class Domain {
 
 
   bool isGoal(const State& location) const {
-    // TODO
-  }
-
-  /**
-   * In multiple goal situations, implement this function to check if a state is
-   * a specific goal
-   * @param location
-   * @param goalLocation
-   * @return
-   */
-  bool isGoal(const State& location, const State& goalLocation) const {
-    // TODO
-  }
-
-  const std::vector<State> getGoals() const {
     // TODO
   }
 
@@ -133,9 +119,28 @@ class Domain {
   // GRD-supporting methods
 
   /**
- * Set the goal to be used for subject planners
- * @param goal
- */
+   * In multiple goal situations, implement this function to check if a state is
+   * a specific goal
+   * @param location
+   * @param goalLocation
+   * @return
+   */
+  bool isGoal(const State& location, const State& goalLocation) const {
+    // TODO
+  }
+
+  /**
+   * Note: could be underspecified if domain semantics permit
+   * @return
+   */
+  const std::vector<State> getGoals() const {
+    // TODO
+  }
+
+  /**
+   * Set the goal to be used for subject planners
+   * @param goal
+   */
   void setCurrentGoal(State goal) {
     // TODO
   }

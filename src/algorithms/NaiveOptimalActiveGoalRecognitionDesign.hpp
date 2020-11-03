@@ -91,10 +91,10 @@ namespace metronome {
 
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
-      recomputeOptimalInfo(*rootState);
+      recomputeOptimalInfo(subjectState);
 
       InterventionTrialResult trialResult = interventionTrial(
-          nodes[subjectState], *rootState);
+          nodes[subjectState], nodes[subjectState]);
       std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
       potentialOutcomes = trialResult.potentialSubjectActionOutcomes;
 
@@ -174,7 +174,7 @@ namespace metronome {
     struct ActionProbability {
       Node* successor;
       double probabilityOfAction;
-      /** Goal priors conditioned on this action being taken */
+      /** Goal priors conditioned on this action being taken. These values are normalized */
       std::unordered_map<State, double, StateHash> conditionedGoalPriors{};
     };
 
@@ -203,30 +203,53 @@ namespace metronome {
      * Enumerate all optimal plans to all goals so that we can configure goal hypotheses and plan counts.
      * Basically A* except we don't stop until we've exhausted the full f-layer of all goals
      *
-     * WARNING: This method does not work for underspecified goals! It depends on the goal state reached
-     * being a fully qualified and unique state.
-     * @param root
+     * WARNING: This method does not handle adding edges. Adding edges could alter g-values
+     * that are not repaired by recomputing from the simulated (current) state.
+     * Instead, to repair values in the graph you must recompute from the subject's actual
+     * current state (i.e. not the simulated state)
+     * @param currentState State from which to start the recomputation
      */
-    void recomputeOptimalInfo(const State& root) {
+    void recomputeOptimalInfo(const State& currentState) {
       // reset open list, goal info, optimal plan states
       openList.clear();
       openList.reorder(&fComparator<Node>);
       goalsToOptimalCost.clear();
       recomputeOptimalIteration++;
 
-      Node* rootNode = nodes[root];
-      if (rootNode == nullptr) {
-        rootNode = createSuccessor(nullptr, root);
+      /* NOTE:
+       * The node already has the correct cost-to-come (g) value
+       * We will base the search off this existing value
+       */
+      Node* startNode = nodes[currentState];
+      if (startNode == nullptr) { // indicates this is root node on first pass
+        startNode = createSuccessor(nullptr, currentState);
+        startNode->g = 0;
       }
 
-      rootNode->g = 0;
-      rootNode->iteration = recomputeOptimalIteration;
+      startNode->iteration = recomputeOptimalIteration;
 
-      openList.push(*rootNode);
+      openList.push(*startNode);
 
-      // set up local set for goals. We will tick them off when we expand them
-      std::unordered_set<Node*> foundGoals{};
-      size_t numGoals = goalsToPriors.size();
+      // set up local tracking for goals. We will tick them off when we expand them
+      std::vector<State> goals = domain->getGoals();
+      // init all to true, then mark as false any goals in the goalsToPriors
+      std::vector<bool> foundGoals{false};
+      foundGoals.resize(goals.size());
+      foundGoals.flip();
+
+      // only searching for goals we haven't already eliminated
+      size_t goalsLeft = 0;
+      for (size_t i = 0; i < goals.size(); i++) {
+        auto& goal = goals[i];
+        if (goalsToPriors[goal] > 0.0) {
+          goalsLeft++;
+          foundGoals[i] = false;
+        }
+      }
+
+      // keep a map of goal specifications to states that achieve them
+      // optimally. Required to support multiple distinct states achieving goal
+      std::unordered_map<State, std::vector<Node*>, StateHash> goalSpecToConcrete{};
 
       Cost finalFLayer = std::numeric_limits<Cost>::max();
 
@@ -238,14 +261,41 @@ namespace metronome {
           break;
         }
 
-        // If this is the last goal, set the final F-layer var.
-        if (domain->isGoal(top->state)
-            && foundGoals.insert(top).second) {
-          if (foundGoals.size() == numGoals) {
-            finalFLayer = top->f();
+        if (domain->isGoal(top->state)){
+          // finding goal from list
+          // Searching through list to support underspecified goals
+          size_t goalIdx = goals.size();
+          for (size_t i = 0; i < goals.size(); i++) {
+            if (domain->isGoal(top->state, goals[i])) {
+              goalIdx = i;
+            }
           }
 
-          goalsToOptimalCost.insert({top->state, top->g});
+          const State& goal = goals[goalIdx];
+
+          // if we haven't already found this goal,
+          // set it to found, set its optimal cost
+          if (!foundGoals[goalIdx]) {
+            foundGoals[goalIdx] = true;
+            assert(goalsLeft > 0);
+            goalsLeft--;
+
+            goalSpecToConcrete[goal] = {};
+            goalsToOptimalCost.insert({goal, top->g});
+          }
+
+          // it is possible we are seeing this goal again later, i.e. with
+          // higher g cost. Do not add it to list of optimal states achieving
+          // goal
+          if (top->g == goalsToOptimalCost[goal]) {
+            auto& concreteNodes = goalSpecToConcrete[goal];
+            concreteNodes.push_back(top);
+          }
+
+          // If this is the last goal, set the final F-layer
+          if (goalsLeft == 0) {
+            finalFLayer = top->f();
+          }
         }
         top->open = false;
 
@@ -254,22 +304,22 @@ namespace metronome {
         expandNode(top);
       }
 
-      if (foundGoals.size() == 0) {
-        throw MetronomeException("No goals discovered from subject's current state. Dead end!");
-      } else if (foundGoals.size() > numGoals) {
-        throw MetronomeException("Underspecified goals not implemented in recompute optimal function");
+      if (goalsLeft != 0) {
+        throw MetronomeException("Not all goals discovered from subject's current state. Dead end!");
       }
 
       openList.clear();
       openList.reorder(&gMaxComparator<Node>);
 
       // seed reverse open list with all found goals
-      for (Node* goal : foundGoals) {
-        goal->goalBackupIteration = recomputeOptimalIteration;
-        // seed the goalsToPlans map with this goal and count 1
-        goal->goalsToPlanCount = {{goal->state, 1}};
-        openList.push(*goal);
-        goal->open = true;
+      for (auto& concreteGoalEntry : goalSpecToConcrete) {
+        for (Node* concreteGoal : concreteGoalEntry.second) {
+          concreteGoal->goalBackupIteration = recomputeOptimalIteration;
+          // seed the goalsToPlans map with this goal and count 1
+          concreteGoal->goalsToPlanCount = {{concreteGoalEntry.first, 1}};
+          openList.push(*concreteGoal);
+          concreteGoal->open = true;
+        }
       }
 
       // Loop until open is fully empty
@@ -290,16 +340,16 @@ namespace metronome {
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
     InterventionTrialResult interventionTrial(
-            Node* simulatedStateNode, const State& rootState) {
-      // sigma
+            Node* simulatedStateNode, Node* subjectCurrentStateNode) {
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
         double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
-        return {g / cStar, {}, {}};
+        // reaction time
+        return {cStar - g, {}, {}};
       }
 
-      InterventionTrialResult trialResult{1.0, {}, {}};
+      InterventionTrialResult trialResult{0.0, {}, {}};
 
       bool depthLimitReached = false;
       if (!identityTrial && (depth / 2) + 1 > maxDepth) {
@@ -349,12 +399,15 @@ namespace metronome {
         // grab patch
         const Patch& domainPatch = optionalDomainPatch.value();
 
-        // repair optimal info, but only if it is not an identity intervention
-        if (!identityTrial) {
+
+        // repair optimal info, but only if no subject states were actually affected
+        // This could happen w/ identity intervention or interventions that only
+        // affect observer state
+        if (domainPatch.affectedStates.size() > 0) {
           // copy goals to optimal cost map so we can verify they don't change
           std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
           std::unordered_map<State, size_t , StateHash> goalHypothesisCopy(simulatedStateNode->goalsToPlanCount);
-          recomputeOptimalInfo(rootState);
+          recomputeOptimalInfo(simulatedStateNode->state);
 
           // detect change in optimal cost for any goal
           bool invalidIntervention = false;
@@ -378,14 +431,15 @@ namespace metronome {
           // when intervention deemed invalid, reverse and continue
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
-            recomputeOptimalInfo(rootState);
+            recomputeOptimalInfo(subjectCurrentStateNode->state);
             continue;
           }
         }
 
 
         // descend
-        ActionTrialResult actionTrialResult = actionTrial(simulatedStateNode, rootState);
+        ActionTrialResult actionTrialResult = actionTrial(
+            simulatedStateNode, subjectCurrentStateNode);
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
         if (depth <= NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH) {
@@ -399,7 +453,7 @@ namespace metronome {
         }
 #endif
 
-        if (actionTrialResult.score < trialResult.score) {
+        if (actionTrialResult.score > trialResult.score) {
           trialResult.score = actionTrialResult.score;
           trialResult.bestIntervention.emplace(interventionBundle);
           trialResult.potentialSubjectActionOutcomes =
@@ -408,8 +462,8 @@ namespace metronome {
 
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
-        if (!identityTrial) {
-          recomputeOptimalInfo(rootState);
+        if (domainPatch.affectedStates.size() > 0) {
+          recomputeOptimalInfo(subjectCurrentStateNode->state);
         }
         if (identityTrialStart) {
           identityTrial = false;
@@ -424,13 +478,14 @@ namespace metronome {
       return trialResult;
     }
 
-    ActionTrialResult actionTrial(Node* simulatedStateNode, const State& rootState) {
+    ActionTrialResult actionTrial(Node* simulatedStateNode, Node* subjectCurrentStateNode) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
         double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
-        return {g / cStar, {}};
+        // reaction time
+        return {cStar - g, {}};
       }
       depth++;
 
@@ -439,14 +494,14 @@ namespace metronome {
           computeActionProbabilities(simulatedStateNode, goalsToPriors)
       };
 
-      // copy goals to priors prior to modifying
+      // copy goals to priors before to modifying
       std::unordered_map<State, double, StateHash> goalsToPriorsBak(goalsToPriors);
 
       for (const ActionProbability& actionResults : trialResult.potentialSubjectActionOutcomes) {
         Node* successor = actionResults.successor;
         double probability = actionResults.probabilityOfAction;
 
-        double actionScore = 1.0;
+        double actionScore = 0.0;
         bool noOp = false;
         // this means that the state is a goal state
         if (successor->state == simulatedStateNode->state) {
@@ -454,7 +509,7 @@ namespace metronome {
         } else {
           // copy-assign
           goalsToPriors = actionResults.conditionedGoalPriors;
-          actionScore = interventionTrial(successor, rootState).score;
+          actionScore = interventionTrial(successor, subjectCurrentStateNode).score;
         }
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
@@ -463,7 +518,9 @@ namespace metronome {
                      << (noOp ? "NO-OP - subject reached goal " : "")
                      << successor->state
                      << ": " << actionScore
-                     << " (Prob " << probability << ")";
+                     << " (Prob " << probability
+                     << "; Action Score: " << actionScore
+                     << ")";
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE > 1
           std::stringstream sstream{};
           for (auto& entry : actionResults.conditionedGoalPriors) {
@@ -627,8 +684,8 @@ namespace metronome {
      */
     Cost getMinHeuristic(const State& state) {
       Cost minH = std::numeric_limits<Cost>::max();
-      for (const auto& entry : goalsToPriors) {
-        minH = std::min(minH, domain->heuristic(state, entry.first));
+      for (const auto& goal : domain->getGoals()) {
+        minH = std::min(minH, domain->heuristic(state, goal));
       }
 
       return minH;
@@ -636,7 +693,10 @@ namespace metronome {
 
     /**
      * Basically a standard A* node expansion
-     * Note: Only supports removing edges, not adding edges
+     *
+     * WARNING: Only supports domains where interventions include removing
+     * edges, not adding edges because we never re-evaluate the successors
+     * method to see if additional successors are available
      * @param source
      */
     void expandNode(Node* source) {
@@ -649,6 +709,7 @@ namespace metronome {
       }
 
       for (Edge edge : source->successors) {
+        // this edge has been removed!
         if (!domain->isValidState(edge.to->state)) continue;
 
         Node* successorNode = edge.to;
