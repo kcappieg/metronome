@@ -233,9 +233,8 @@ namespace metronome {
       // set up local tracking for goals. We will tick them off when we expand them
       std::vector<State> goals = domain->getGoals();
       // init all to true, then mark as false any goals in the goalsToPriors
-      std::vector<bool> foundGoals{false};
-      foundGoals.resize(goals.size());
-      foundGoals.flip();
+      std::vector<bool> foundGoals{};
+      foundGoals.resize(goals.size(), true);
 
       // only searching for goals we haven't already eliminated
       size_t goalsLeft = 0;

@@ -35,6 +35,7 @@ set(SOURCE_FILES
         src/algorithms/planner_tools/Comparators.hpp
 		src/algorithms/TimeBoundedAStar.hpp
         src/domains/GridWorld.hpp
+		src/domains/Logistics.hpp
         src/domains/Domain.hpp
         src/domains/SlidingTilePuzzle.hpp
 		src/domains/OrientationGrid.hpp
@@ -109,6 +110,7 @@ add_definitions(-DENABLE_NAIVE_OPTIMAL_AGRD)
 
 # Select the possible domains
 add_definitions(-DENABLE_GRID_WORLD)
+add_definitions(-DENABLE_LOGISTICS)
 #add_definitions(-DENABLE_DYNAMIC_GRID_WORLD)
 #add_definitions(-DENABLE_ORIENTATION_GRID)
 #add_definitions(-DENABLE_VACUUM_WORLD)
