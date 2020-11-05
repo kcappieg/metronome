@@ -141,7 +141,7 @@ class Domain {
    * Set the goal to be used for subject planners
    * @param goal
    */
-  void setCurrentGoal(State goal) {
+  void setCurrentGoal(const State& goal) {
     // TODO
   }
 
@@ -155,10 +155,14 @@ class Domain {
   /**
    * Allowing interventions method to take a vector of states so that we can retrieve
    * many interventions at once
-   * @param states
+   * @param currentState The current state being considered
+   * @param lookaheadStates Algorithms may have some lookahead. This param allows
+   * them to pass the lookahead. The domain can then return only interventions relevant
+   * to these states, if semantically applicable
    * @return
    */
-  std::vector<InterventionBundle<Domain>> interventions(const std::vector<State>& states) const {
+  std::vector<InterventionBundle<Domain>> interventions(
+      const State& currentState, const std::vector<State>& lookaheadStates) const {
     // TODO
   }
 

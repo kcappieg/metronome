@@ -1,0 +1,27 @@
+Locations:[num locations]
+[location ID] [location ID] [cost]
+--- etc... ---
+
+Trucks:[num trucks]
+[truck ID] [location ID]
+--- etc... ---
+
+Packages:[num packages]
+[pkg ID] [location ID]
+--- etc... ---
+
+Goals:
+([pkg ID] [location ID]),([pkg ID] [location ID]),[...]
+--- etc... ---
+
+--- Optional below here (observer info) --- 
+
+Observer:[location ID]
+
+--- NOTES ---
+
+Blank lines are skipped.
+This template includes comments on lines beginning with '---', but actual domain files cannot have any comments.
+All trucks, pkgs, and locations are 0-indexed
+Edges specified as a pair of locations and the cost to travel between them. Edges are undirected
+Goal specifications are end locations for packages. Each spec is 1 line and can contain multiple package locations. Do not include spaces between pkg and location IDs, only a single comma

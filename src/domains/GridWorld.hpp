@@ -389,7 +389,7 @@ class GridWorld {
    * Set the goal to be used for subject planners
    * @param goal
    */
-  void setCurrentGoal(State goal) {
+  void setCurrentGoal(const State& goal) {
     singleGoal = goal;
     useSingleGoal = true;
   }
@@ -408,7 +408,8 @@ class GridWorld {
    * @param states
    * @return
    */
-  std::vector<InterventionBundle<GridWorld>> interventions(const std::vector<State>& states) const {
+  std::vector<InterventionBundle<GridWorld>> interventions(
+      const State& subjectState, const std::vector<State>& lookaheadStates) const {
     std::vector<InterventionBundle<GridWorld>> interventions;
     std::unordered_set<State, metronome::Hash<State>> stateInterventions;
 
@@ -416,12 +417,13 @@ class GridWorld {
       throw MetronomeException("No observer location detected in AGRD setting");
     }
 
-    for (auto& state : states) {
+    for (auto& state : lookaheadStates) {
       if (isValidState(state) && possibleInterventions.count(state)) {
         stateInterventions.insert(state);
       }
     }
 
+    // TODO: this basically requires the lookahead states. Should create branch where it is not required
     // Add all possible movement to intervention vector
     for (SuccessorBundle<GridWorld>& successor : successors(*observerLocation)) {
       // If a successor is also a valid obstacle location, add that to interventions

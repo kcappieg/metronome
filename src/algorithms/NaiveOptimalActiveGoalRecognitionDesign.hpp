@@ -189,10 +189,10 @@ namespace metronome {
       std::vector<ActionProbability> potentialSubjectActionOutcomes;
     };
 
-    // debug methods
-    Node getNode(uint64_t x, uint64_t y) {
-      return *nodes[State(x, y)];
-    }
+//    // debug methods
+//    Node getNode(uint64_t x, uint64_t y) {
+//      return *nodes[State(x, y)];
+//    }
 
     /*****************************************
             Algorithm methods
@@ -380,7 +380,9 @@ namespace metronome {
           queue.pop();
         }
 
-        interventions = domain->interventions({optimalPlanStates.begin(), optimalPlanStates.end()});
+        interventions = domain->interventions(
+            simulatedStateNode->state,
+            {optimalPlanStates.begin(), optimalPlanStates.end()});
       }
 
       for (InterventionBundle interventionBundle : interventions) {
@@ -445,10 +447,10 @@ namespace metronome {
           LOG(DEBUG) << pad(depth) << "IT "
                      << interventionBundle.intervention
                      << ": " << actionTrialResult.score;
-          // condition here so getNode compiles
-          if (depth == 1000000) {
-            LOG(INFO) << getNode(0, 0).toString();
-          }
+//          // condition here so getNode compiles
+//          if (depth == 1000000) {
+//            LOG(INFO) << getNode(0, 0).toString();
+//          }
         }
 #endif
 
