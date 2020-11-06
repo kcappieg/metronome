@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include "SuccessorBundle.hpp"
 
@@ -31,7 +32,8 @@ static constexpr size_t NULL_ID = std::numeric_limits<size_t>::max();
  * same movement rules as the trucks, but instead of picking up packages
  * they can block roads from location to location
  *
- * Implemented heuristic is relatively simple, not heavily engineered:
+ * Implemented heuristic is relatively simple, not heavily engineered.
+ * Basically accumulates packages not at their goal locations
  *
  */
 class Logistics {
@@ -109,7 +111,7 @@ class Logistics {
       return !(*this == state);
     }
 
-    std::size_t hash() const {
+    [[nodiscard]] std::size_t hash() const {
       size_t seed = 17;
 
       for (const size_t id : truckLocations) {
@@ -125,7 +127,7 @@ class Logistics {
       }
     }
 
-    std::string toString() const {
+    [[nodiscard]] std::string toString() const {
       std::ostringstream stateStr{};
       stateStr << "Truck locs: " << vecToString(truckLocations)
         << "; " << "Object locs: " << vecToString(pkgLocations)
@@ -144,14 +146,14 @@ class Logistics {
 
     /** if the agent is traveling, recorded here */
     size_t travelTime = 0;
-    // TODO: deal w/ travel time in apply actions / successors
+    std::optional<Action> driveAction;
 
     friend std::ostream& operator<<(std::ostream& os, const State& state) {
       return os << state.toString();
     }
    private:
 
-    std::string vecToString(const std::vector<size_t>& vec) const {
+    [[nodiscard]] static std::string vecToString(const std::vector<size_t>& vec) {
       std::ostringstream vecStr{};
       vecStr << '<';
 
@@ -161,7 +163,7 @@ class Logistics {
       return vecStr.str();
     }
 
-    std::string vecToString(const std::vector<Load>& vec) const {
+    [[nodiscard]] static std::string vecToString(const std::vector<Load>& vec) {
       std::ostringstream vecStr{};
 
       for (size_t i = 0; i < vec.size(); i++) {
@@ -174,8 +176,6 @@ class Logistics {
 
       return vecStr.str();
     }
-
-    // TODO: Possibly implement semantic getters, like isEmpty for a specific truck
   };
 
   /** Possible interventions for a Goal Recognition Design problem */
@@ -192,17 +192,26 @@ class Logistics {
         : locationId{locationId}, type{type} {}
 
     bool operator==(const Intervention& intervention) const {
-      // TODO
-      return true;
+      return type == intervention.type && locationId == intervention.locationId;
     }
     bool operator!=(const Intervention& intervention) const {
-      // TODO
       return !(*this == intervention);
     }
 
-    std::string toString() const {
-      // TODO
-      return "";
+    [[nodiscard]] std::string toString() const {
+      std::ostringstream interventionStr{};
+      switch (type) {
+        case BLOCK:
+          interventionStr << "B loc" << locationId;
+          break;
+        case DRIVE:
+          interventionStr << "D loc" << locationId;
+          break;
+        case IDENTITY:
+          interventionStr << "Identity";
+          break;
+      }
+      return interventionStr.str();
     }
 
     friend std::ostream& operator<<(std::ostream& os, const Intervention& intervention) {
@@ -218,10 +227,20 @@ class Logistics {
    */
   class Patch {
    public:
+    explicit Patch(
+        Intervention intervention,
+        std::vector<State> affectedStates = {},
+        bool traveling = false)
+        : intervention{intervention}, traveling{traveling},
+          affectedStates{std::move(affectedStates)} {}
+
+    const Intervention intervention;
+    const bool traveling;
     /**
      * Dynamic algorithms sometimes receive information on which states were affected.
-     * This property provides that information for a given intervention.
-     * Note that these states could be "underspecified" according to the domain semantics
+     * This property includes the "underspecified" states that are affected.
+     * For this domain, this should be states where a truck is in one or the other
+     * of the locations whose edge was removed
      */
     const std::vector<State> affectedStates;
   };
@@ -375,83 +394,142 @@ class Logistics {
     if (goals.size() == 1) {
       useSingleGoal = true;
       singleGoal = goals[0];
-    } else if (goals.size() == 0) {
+    } else if (goals.empty()) {
       throw MetronomeException("No goals specified");
     }
   }
 
-  std::optional<const State> transition(const State& state, const Action& action) const {
-    // TODO
+  [[nodiscard]] std::optional<const State> transition(
+      const State& state, const Action& action) const {
+    switch(action.type){
+      case Action::LOAD:
+        return loadPkg(state, action);
+      case Action::UNLOAD:
+        return unloadPkg(state, action);
+      case Action::DRIVE:
+        return drive(state, action);
+    }
+    // identity action
     return {};
+  }
+
+  [[nodiscard]] bool isGoal(const State& location) const {
+    if (useSingleGoal) {
+      return isGoal(location, singleGoal);
+    } else {
+      auto isGoalPred = [this, &location](const State& goal) {
+        return isGoal(location, goal);
+      };
+      return std::any_of(goals.cbegin(), goals.cend(), isGoalPred);
+    }
+
   }
 
   /**
-   * Validates that the agent can visit the state
+   * Heuristic to the current goal, if applicable
    * @param state
    * @return
    */
-  bool isValidState(const State& state) const {
-    // TODO
-    return false;
+  [[nodiscard]] Cost heuristic(const State& state) const {
+    if (useSingleGoal) {
+      return goalDistance(state, singleGoal) * actionDuration;
+    } else {
+      throw MetronomeException("Goal ambiguous - Distance function invoked with implicit goal, but goal set is greater than one");
+    }
   }
 
-
-  bool isGoal(const State& location) const {
-    // TODO
-    return false;
+  /**
+   * Heuristic to other state. State is assumed to be underspecified
+   * @param state
+   * @param underspecifiedState
+   * @return
+   */
+  [[nodiscard]] Cost heuristic(const State& state, const State& underspecifiedState) const {
+    return goalDistance(state, underspecifiedState) * actionDuration;
   }
 
-  Cost distance(const State& state) const {
-    // TODO
-    return 0;
+  /**
+   * Return successors.
+   * If traveling, returns another driving action. Otherwise, returns all
+   * possible load/unload or drive truck actions
+   */
+  [[nodiscard]] std::vector<SuccessorBundle<Logistics>> successors(const State& state) const {
+    // if traveling, just return drive action
+    if (state.travelTime > 0) {
+      // shouldn't be possible for it to not have a value
+      assert(state.driveAction.has_value());
+
+      return {
+          SuccessorBundle<Logistics>(
+          transition(state, state.driveAction.value()).value(),
+          state.driveAction.value(),
+          actionDuration)
+      };
+    }
+    std::vector<SuccessorBundle<Logistics>> successors{};
+
+    // loop through all trucks, looking for drive, load, and unload actions
+    for (size_t truckId = 0; truckId < numTrucks; truckId++) {
+      size_t truckLocId = state.truckLocations[truckId];
+
+      // load for all possible packages
+      for (size_t pkgId = 0; pkgId < numPkgs; pkgId++) {
+        if (truckLocId != state.pkgLocations[pkgId]) continue; // can't load what's not there
+
+        addValidSuccessor(successors, state, Action(truckId, pkgId, Action::Type::LOAD));
+      }
+      // unload for all pkgs in truck's load
+      for (size_t pkgId : state.truckLoads[truckId]) {
+        if (pkgId == NULL_ID) continue; //empty slot
+
+        addValidSuccessor(successors, state, Action(truckId, pkgId, Action::Type::UNLOAD));
+      }
+
+      // drive for all edges
+      for (const Edge* edge : edgeLookup[truckLocId]){
+        size_t dest = edge->locA == truckLocId ? edge->locB : edge->locA;
+        addValidSuccessor(successors, state, Action(truckId, dest));
+      }
+    }
+
+    return successors;
   }
 
-  Cost heuristic(const State& state) const {
-    // TODO
-    return 0;
-  }
-
-  Cost heuristic(const State& state, const State& other) const {
-    // TODO
-    return 0;
-  }
-
-  std::vector<SuccessorBundle<Logistics>> successors(const State& state) const {
-    // TODO
-    return {};
-  }
-
-  const State getStartState() const {
+  [[nodiscard]] State getStartState() const {
     return startState;
   }
 
   /** Returns duration of identity action */
-  Cost getActionDuration() const {
+  [[nodiscard]] Cost getActionDuration() const {
     return actionDuration;
   }
 
-  Cost getActionDuration(const Action& action) const {
-    // TODO
+  [[nodiscard]] Cost getActionDuration(const Action& action) const {
     return actionDuration;
   }
 
-  Action getIdentityAction() const {
-    // TODO
+  [[nodiscard]] Action getIdentityAction() const {
     return Action();
   }
 
   // GRD-supporting methods
 
   /**
-   * In multiple goal situations, implement this function to check if a state is
-   * a specific goal
+   * Compares all package locations in the goal vs the location. If all match,
+   * it is a goal!
    * @param location
    * @param goalLocation
    * @return
    */
   bool isGoal(const State& location, const State& goalLocation) const {
-    // TODO
-    return false;
+    for (size_t i = 0; i < numPkgs; i++) {
+      size_t goalPkgLoc = goalLocation.pkgLocations[i];
+      // we don't care when the goal does not specify a pkg location
+      if (goalPkgLoc != NULL_ID && goalPkgLoc != location.pkgLocations[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -490,7 +568,6 @@ class Logistics {
   }
 
   Intervention getIdentityIntervention() const {
-    // TODO
     return Intervention();
   }
 
@@ -531,7 +608,7 @@ class Logistics {
     return true;
   }
 
-  [[nodiscard]] std::vector<std::string> split(const std::string& str, const char delim) {
+  [[nodiscard]] static std::vector<std::string> split(const std::string& str, const char delim) {
     std::vector<std::string> out;
     size_t start = 0, end = 0;
     while ((start = str.find_first_not_of(delim, end)) != std::string::npos) {
@@ -540,6 +617,133 @@ class Logistics {
     }
 
     return out;
+  }
+
+  /**
+   * Computes a lower bound distance in time steps between 2 states, including
+   * one that is underspecified.
+   * - +2 for each goal pkg not at its goal location (load/unload)
+   *   - +min edge cost from pkg loc for each goal pkg not at goal loc (drive)
+   * - +1 for each goal pkg in a truck (mutually exclusive w/ others)
+   *
+   * Note: I don't think this is a great heuristic, but it'll get the job done
+   * Also note, would be unwise to use this if there are a lot of packages in the domain
+   * @param state
+   * @param underspecifiedState
+   * @return
+   */
+  [[nodiscard]] Cost goalDistance(const State& state, const State& underspecifiedState) const {
+    Cost minDistance = 0;
+    for (size_t i = 0; i < numPkgs; i++) {
+      size_t goalPkgLoc = underspecifiedState.pkgLocations[i];
+      if (goalPkgLoc == NULL_ID) {
+        continue; // not part of goal spec, so we ignoremeasures
+      }
+
+      // Package is in transit
+      if (state.pkgLocations[i] == NULL_ID) {
+        minDistance++;
+        continue;
+      }
+
+      // Package not in transit. Must LOAD/UNLOAD at least
+      minDistance += 2;
+      // Find min edge from current pkg location
+      auto costComparator = [](const Edge* a, const Edge* b) {
+        return a->edgeCost < b->edgeCost;
+      };
+      const auto& edgeList = edgeLookup[state.pkgLocations[i]];
+      Edge* minEdge = *std::min_element(edgeList.cbegin(), edgeList.cend(), costComparator);
+
+      minDistance += minEdge->edgeCost;
+    }
+    return minDistance;
+  }
+
+
+  void addValidSuccessor(std::vector<SuccessorBundle<Logistics>>& successors,
+                        const State& state, Action action) {
+    std::optional<State> successor = transition(state, action);
+    if (successor.has_value()) {
+      successors.emplace_back(successor.value(), action, actionDuration);
+    }
+  }
+
+  // Action functions
+  /**
+   * Loads package onto truck
+   * @param state
+   * @param action
+   * @return
+   */
+  [[nodiscard]] static std::optional<const State> loadPkg(const State& state, const Action& action) {
+    State successor{state};
+    if (successor.pkgLocations[action.pkgId] != successor.truckLocations[action.truckId]) {
+      return {}; // pkg not at location
+    }
+    successor.pkgLocations[action.pkgId] = NULL_ID;
+    for (size_t& pkgSlot : successor.truckLoads[action.truckId]) {
+      if (pkgSlot == NULL_ID) {
+        pkgSlot = action.pkgId;
+
+        return successor;
+      }
+    }
+    return {}; // no capacity
+  }
+
+  /**
+   * Unloads a package from a truck
+   * @param state
+   * @param action
+   * @return
+   */
+  [[nodiscard]] static std::optional<const State> unloadPkg(const State& state, const Action& action) {
+    State successor{state};
+    for (size_t& pkgSlot : successor.truckLoads[action.truckId]) {
+      if (pkgSlot == action.pkgId) {
+        pkgSlot = NULL_ID;
+        successor.pkgLocations[action.pkgId] = successor.truckLocations[action.truckId];
+
+        return successor;
+      }
+    }
+    return {}; // truck does not have package
+  }
+
+  [[nodiscard]] std::optional<const State> drive(const State& state, const Action& action) const {
+    State successor{state};
+
+    // checks either that the truck is not already driving or that
+    // the truck is driving to the same location
+    if (successor.travelTime > 0) {
+      if (state.truckLocations[action.truckId] != action.locationId) {
+        return {}; // already driving to a different location
+      }
+
+      successor.travelTime--;
+      if (successor.travelTime == 0) {
+        successor.driveAction = {};
+      }
+      return successor;
+    }
+
+    size_t truckLocation = successor.truckLocations[action.truckId];
+    for (Edge* edge : edgeLookup[truckLocation]) {
+      size_t dest = edge->locA == truckLocation ? edge->locB : edge->locA;
+      if (dest == action.locationId) {
+        successor.truckLocations[action.truckId] = dest;
+        successor.travelTime = edge->edgeCost - 1;
+
+        // if there's travel time, store drive action for later usage
+        if (successor.travelTime > 0) {
+          successor.driveAction = action;
+        }
+
+        return successor;
+      }
+    }
+    return {}; // no edge to successor exists
   }
 
   // Internal state of domain
@@ -566,6 +770,8 @@ class Logistics {
 
   // Observer
   size_t observerLoc;
+  // if observer is traveling, will be recorded here
+  size_t travelTime = 0;
 
   // Configuration
   const Cost actionDuration;

@@ -70,20 +70,15 @@ class Domain {
     // TODO
   }
 
-  /**
-   * Validates that the agent can visit the state
-   * @param state
-   * @return
-   */
-  bool isValidState(const State& state) const {
-    // TODO
-  }
-
-
   bool isGoal(const State& location) const {
     // TODO
   }
 
+  /**
+   * Refers to distance in steps to the goal
+   * @param state
+   * @return
+   */
   Cost distance(const State& state) const {
     // TODO
   }
@@ -96,7 +91,7 @@ class Domain {
     // TODO
   }
 
-  const State getStartState() const {
+  State getStartState() const {
     // TODO
   }
 

@@ -5,11 +5,14 @@
 #ifndef METRONOME_NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_HPP
 #define METRONOME_NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <queue>
 
 #include <experiment/Configuration.hpp>
 #include "GoalRecognitionDesignPlanner.hpp"
@@ -17,8 +20,6 @@
 #include "utils/Hash.hpp"
 #include "utils/ObjectPool.hpp"
 #include <MemoryConfiguration.hpp>
-#include <unordered_set>
-#include <queue>
 #include "utils/PriorityQueue.hpp"
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
@@ -222,7 +223,7 @@ namespace metronome {
        */
       Node* startNode = nodes[currentState];
       if (startNode == nullptr) { // indicates this is root node on first pass
-        startNode = createSuccessor(nullptr, currentState);
+        startNode = getSuccessor(nullptr, currentState);
         startNode->g = 0;
       }
 
@@ -578,23 +579,22 @@ namespace metronome {
       }
 
       // for each action, but we only care about the successors
-      for (Edge& successorEdge : simulatedStateNode->successors) {
+      for (SuccessorBundle<Domain> successor : domain->successors(simulatedStateNode->state)) {
+        // might record new parent, if applicable
+        Node* successorNode = getSuccessor(simulatedStateNode, successor.state, successor.actionCost);
         // if g does not increase, the subject would not
         // transition from the simulated state to this successor via an optimal plan
-        if (successorEdge.to->g <= simulatedStateNode->g) continue;
+        if (successorNode->g <= simulatedStateNode->g) continue;
 
         // this means the successor is not on any optimal plan, so we can skip
         if (simulatedStateNode->goalBackupIteration !=
-            successorEdge.to->goalBackupIteration) {
+            successorNode->goalBackupIteration) {
           continue;
         }
 
-        // this means the state is invalid (possibly due to prior intervention)
-        if (!domain->isValidState(successorEdge.to->state)) continue;
-
         actionResults.emplace_back();
         ActionProbability& actionResult = actionResults.back();
-        actionResult.successor = successorEdge.to;
+        actionResult.successor = successorNode;
         // initialize conditioned goal priors to 0.0
         for (auto& entry : conditionedGoalsToPriors) {
           actionResult.conditionedGoalPriors[entry.first] = 0.0;
@@ -651,7 +651,7 @@ namespace metronome {
      * @param successorState
      * @return
      */
-    Node* createSuccessor(Node* parent, const State& successorState, Cost actionCost = 0) {
+    Node* getSuccessor(Node* parent, const State& successorState, Cost actionCost = 0) {
       Node* tempNode = nodes[successorState];
 
       if (tempNode == nullptr) {
@@ -665,14 +665,23 @@ namespace metronome {
         nodes[successorState] = tempNode;
       }
 
-      // if not a root, we set edge info
-      if (parent != nullptr) {
+      // predicate for find method
+      auto seenParent = [parent](const Edge& parentEdge) -> bool {
+        return parentEdge.from == parent;
+      };
+
+      // if not a root and we haven't expanded from this parent before, we set edge info
+      // TODO: if performance is a problem, there might be too many successors we're looping through here
+      if (parent != nullptr &&
+          std::any_of(
+              tempNode->parents.cbegin(),
+              tempNode->parents.cend(),
+              seenParent)) {
         Edge edge{parent, tempNode, actionCost};
 
         tempNode->parents.push_back(edge);
         parent->successors.push_back(edge);
       }
-
 
       return tempNode;
     }
@@ -703,17 +712,9 @@ namespace metronome {
     void expandNode(Node* source) {
       Planner::incrementExpandedNodeCount();
 
-      if (source->successors.size() == 0) {
-        for (SuccessorBundle<Domain> successor : domain->successors(source->state)) {
-          createSuccessor(source, successor.state, successor.actionCost);
-        }
-      }
-
-      for (Edge edge : source->successors) {
-        // this edge has been removed!
-        if (!domain->isValidState(edge.to->state)) continue;
-
-        Node* successorNode = edge.to;
+      for (SuccessorBundle<Domain> successor : domain->successors(source->state)) {
+        // might record new parent, if applicable
+        Node* successorNode = getSuccessor(source, successor.state, successor.actionCost);
 
         // Node is outdated
         if (successorNode->iteration != recomputeOptimalIteration) {
@@ -722,7 +723,7 @@ namespace metronome {
           successorNode->open = false;
         }
 
-        Cost successorPotentialG = source->g + edge.actionCost;
+        Cost successorPotentialG = source->g + successor.actionCost;
         if (successorNode->g > successorPotentialG) {
           successorNode->g = successorPotentialG;
 
