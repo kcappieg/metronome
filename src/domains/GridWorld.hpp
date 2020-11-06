@@ -409,7 +409,8 @@ class GridWorld {
    * @return
    */
   std::vector<InterventionBundle<GridWorld>> interventions(
-      const State& subjectState, const std::vector<State>& lookaheadStates) const {
+      [[maybe_unused]] const State& subjectState,
+      const std::vector<State>& lookaheadStates) const {
     std::vector<InterventionBundle<GridWorld>> interventions;
     std::unordered_set<State, metronome::Hash<State>> stateInterventions;
 

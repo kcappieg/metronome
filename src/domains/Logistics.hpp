@@ -125,6 +125,8 @@ class Logistics {
           seed = (seed * 31) ^ std::hash<size_t>{}(id);
         }
       }
+
+      return seed;
     }
 
     [[nodiscard]] std::string toString() const {
@@ -132,6 +134,8 @@ class Logistics {
       stateStr << "Truck locs: " << vecToString(truckLocations)
         << "; " << "Object locs: " << vecToString(pkgLocations)
         << "; " << "Truck loads: " << vecToString(truckLoads) << ';';
+
+      return stateStr.str();
     }
 
     /** location id of truck. Index is truck ID */
@@ -146,7 +150,7 @@ class Logistics {
 
     /** if the agent is traveling, recorded here */
     size_t travelTime = 0;
-    std::optional<Action> driveAction;
+    std::optional<Action> driveAction = {};
 
     friend std::ostream& operator<<(std::ostream& os, const State& state) {
       return os << state.toString();
@@ -408,6 +412,8 @@ class Logistics {
         return unloadPkg(state, action);
       case Action::DRIVE:
         return drive(state, action);
+      case Action::IDENTITY:
+        break;
     }
     // identity action
     return {};
@@ -504,7 +510,7 @@ class Logistics {
     return actionDuration;
   }
 
-  [[nodiscard]] Cost getActionDuration(const Action& action) const {
+  [[nodiscard]] Cost getActionDuration(const Action&) const {
     return actionDuration;
   }
 
@@ -521,7 +527,7 @@ class Logistics {
    * @param goalLocation
    * @return
    */
-  bool isGoal(const State& location, const State& goalLocation) const {
+  [[nodiscard]] bool isGoal(const State& location, const State& goalLocation) const {
     for (size_t i = 0; i < numPkgs; i++) {
       size_t goalPkgLoc = goalLocation.pkgLocations[i];
       // we don't care when the goal does not specify a pkg location
@@ -536,7 +542,7 @@ class Logistics {
    * Note: could be underspecified if domain semantics permit
    * @return
    */
-  const std::vector<State> getGoals() const {
+  [[nodiscard]] std::vector<State> getGoals() const {
     return goals;
   }
 
@@ -562,12 +568,13 @@ class Logistics {
    * @param states
    * @return
    */
-  std::vector<InterventionBundle<Logistics>> interventions(const std::vector<State>& states) const {
+  [[nodiscard]] std::vector<InterventionBundle<Logistics>> interventions(
+      const State& currentState, const std::vector<State>& states) const {
     // TODO
     return {};
   }
 
-  Intervention getIdentityIntervention() const {
+  [[nodiscard]] Intervention getIdentityIntervention() const {
     return Intervention();
   }
 
@@ -662,7 +669,7 @@ class Logistics {
 
 
   void addValidSuccessor(std::vector<SuccessorBundle<Logistics>>& successors,
-                        const State& state, Action action) {
+                        const State& state, Action action) const {
     std::optional<State> successor = transition(state, action);
     if (successor.has_value()) {
       successors.emplace_back(successor.value(), action, actionDuration);
