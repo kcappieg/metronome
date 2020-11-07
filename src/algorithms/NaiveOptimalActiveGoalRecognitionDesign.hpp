@@ -25,7 +25,7 @@
 #include "domains/SuccessorBundle.hpp"
 
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 3
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 15
 
 namespace metronome {
   template<typename Domain>
@@ -64,7 +64,7 @@ namespace metronome {
       domain = &localDomain;
       depth = 0;
       if (!rootState.has_value()) {
-        *rootState = domain->getStartState();
+        rootState = domain->getStartState();
       }
 
       if (!potentialOutcomes.empty()) {
@@ -221,9 +221,9 @@ namespace metronome {
        * The node already has the correct cost-to-come (g) value
        * We will base the search off this existing value
        */
-      Node* startNode = nodes[currentState];
-      if (startNode == nullptr) { // indicates this is root node on first pass
-        startNode = getSuccessor(nullptr, currentState);
+      Node* startNode = getSuccessor(nullptr, currentState, 0, false);
+
+      if (currentState == rootState.value()) { // indicates this is root node on first pass
         startNode->g = 0;
       }
 
@@ -237,11 +237,12 @@ namespace metronome {
       std::vector<bool> foundGoals{};
       foundGoals.resize(goals.size(), true);
 
-      // only searching for goals we haven't already eliminated
+      // only searching for goals we haven't already eliminated from the
+      // search's current state
       size_t goalsLeft = 0;
       for (size_t i = 0; i < goals.size(); i++) {
         auto& goal = goals[i];
-        if (goalsToPriors[goal] > 0.0) {
+        if (startNode->goalsToPlanCount.count(goal) > 0 || startNode->g == 0) {
           goalsLeft++;
           foundGoals[i] = false;
         }
@@ -287,7 +288,10 @@ namespace metronome {
           // it is possible we are seeing this goal again later, i.e. with
           // higher g cost. Do not add it to list of optimal states achieving
           // goal
-          if (top->g == goalsToOptimalCost[goal]) {
+          // Additionally check that this goal is relevant right now. (Might
+          // not be since we could have already pruned it from hypothesis at this branch)
+          if (goalsToOptimalCost.count(goal) > 0 &&
+              top->g == goalsToOptimalCost.at(goal)) {
             auto& concreteNodes = goalSpecToConcrete[goal];
             concreteNodes.push_back(top);
           }
@@ -344,12 +348,17 @@ namespace metronome {
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
-        double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
+        if (goalsToOptimalCost.count(goalState) == 0) {
+          throw MetronomeException("Bug in goal plan count");
+        }
+        double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
         // reaction time
         return {cStar - g, {}, {}};
       }
 
       InterventionTrialResult trialResult{0.0, {}, {}};
+      // cache g for re-computing optimal plans
+      Cost subjectCurrentG = subjectCurrentStateNode->g;
 
       bool depthLimitReached = false;
       if (!identityTrial && (depth / 2) + 1 > maxDepth) {
@@ -433,6 +442,8 @@ namespace metronome {
           // when intervention deemed invalid, reverse and continue
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
+            // reset g for recomputing optimal plans
+            subjectCurrentStateNode->g = subjectCurrentG;
             recomputeOptimalInfo(subjectCurrentStateNode->state);
             continue;
           }
@@ -465,6 +476,8 @@ namespace metronome {
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
         if (domainPatch.affectedStates.size() > 0) {
+          // reset g for recomputing optimal plans
+          subjectCurrentStateNode->g = subjectCurrentG;
           recomputeOptimalInfo(subjectCurrentStateNode->state);
         }
         if (identityTrialStart) {
@@ -485,7 +498,10 @@ namespace metronome {
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
-        double cStar = static_cast<double>(goalsToOptimalCost[goalState]);
+        if (goalsToOptimalCost.count(goalState) == 0) {
+          throw MetronomeException("Bug in goal plan count");
+        }
+        double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
         // reaction time
         return {cStar - g, {}};
       }
@@ -651,7 +667,8 @@ namespace metronome {
      * @param successorState
      * @return
      */
-    Node* getSuccessor(Node* parent, const State& successorState, Cost actionCost = 0) {
+    Node* getSuccessor(Node* parent, const State& successorState,
+                       Cost actionCost = 0, bool resetG = true) {
       Node* tempNode = nodes[successorState];
 
       if (tempNode == nullptr) {
@@ -665,18 +682,21 @@ namespace metronome {
         nodes[successorState] = tempNode;
       }
 
-      // predicate for find method
-      auto seenParent = [parent](const Edge& parentEdge) -> bool {
-        return parentEdge.from == parent;
-      };
+      // Node is outdated
+      // must do this here so we can reset successors / predecessors
+      if (tempNode->iteration != recomputeOptimalIteration) {
+        tempNode->iteration = recomputeOptimalIteration;
+        if (resetG) {
+          tempNode->g = std::numeric_limits<Cost>::max();
+        }
+        tempNode->h = getMinHeuristic(successorState);
+        tempNode->open = false;
+        tempNode->parents.clear();
+        tempNode->successors.clear();
+      }
 
-      // if not a root and we haven't expanded from this parent before, we set edge info
-      // TODO: if performance is a problem, there might be too many successors we're looping through here
-      if (parent != nullptr &&
-          std::any_of(
-              tempNode->parents.cbegin(),
-              tempNode->parents.cend(),
-              seenParent)) {
+      // if not a root we set edge info
+      if (parent != nullptr) {
         Edge edge{parent, tempNode, actionCost};
 
         tempNode->parents.push_back(edge);
@@ -715,13 +735,6 @@ namespace metronome {
       for (SuccessorBundle<Domain> successor : domain->successors(source->state)) {
         // might record new parent, if applicable
         Node* successorNode = getSuccessor(source, successor.state, successor.actionCost);
-
-        // Node is outdated
-        if (successorNode->iteration != recomputeOptimalIteration) {
-          successorNode->iteration = recomputeOptimalIteration;
-          successorNode->g = std::numeric_limits<Cost>::max();
-          successorNode->open = false;
-        }
 
         Cost successorPotentialG = source->g + successor.actionCost;
         if (successorNode->g > successorPotentialG) {
