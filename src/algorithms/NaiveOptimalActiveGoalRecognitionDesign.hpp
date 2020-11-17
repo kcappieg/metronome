@@ -25,7 +25,7 @@
 #include "domains/SuccessorBundle.hpp"
 
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 15
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 3
 
 namespace metronome {
   template<typename Domain>
@@ -418,10 +418,15 @@ namespace metronome {
           // copy goals to optimal cost map so we can verify they don't change
           std::unordered_map<State, Cost, StateHash> goalsToOptimalCostCopy(goalsToOptimalCost);
           std::unordered_map<State, size_t , StateHash> goalHypothesisCopy(simulatedStateNode->goalsToPlanCount);
-          recomputeOptimalInfo(simulatedStateNode->state);
+          bool invalidIntervention = false;
+          try {
+            recomputeOptimalInfo(simulatedStateNode->state);
+          } catch (MetronomeException mex) {
+            // made a goal unreachable
+            invalidIntervention = true;
+          }
 
           // detect change in optimal cost for any goal
-          bool invalidIntervention = false;
           for (auto& entry : goalsToOptimalCostCopy) {
             Cost originalCost = entry.second;
             Cost newCost = goalsToOptimalCost[entry.first];

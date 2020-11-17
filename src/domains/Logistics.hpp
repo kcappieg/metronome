@@ -115,8 +115,7 @@ class Logistics {
     bool operator==(const State& state) const {
       return truckLocations == state.truckLocations &&
              pkgLocations == state.pkgLocations &&
-             truckLoads == state.truckLoads &&
-              travelTime == state.travelTime;
+             truckLoads == state.truckLoads;
     }
 
     bool operator!=(const State& state) const {
@@ -124,7 +123,7 @@ class Logistics {
     }
 
     [[nodiscard]] std::size_t hash() const {
-      size_t seed = 17 ^ std::hash<size_t>{}(travelTime);
+      size_t seed = 17;
 
       for (const size_t id : truckLocations) {
         seed = (seed * 31) ^ std::hash<size_t>{}(id);
@@ -159,10 +158,6 @@ class Logistics {
      * array entries are object IDs. NULL_ID if none
      */
     std::vector<Load>truckLoads{};
-
-    /** if the agent is traveling, recorded here */
-    size_t travelTime = 0;
-    std::optional<Action> driveAction = {};
 
     friend std::ostream& operator<<(std::ostream& os, const State& state) {
       return os << state.toString();
@@ -265,28 +260,26 @@ class Logistics {
    private:
     Patch(
         Intervention intervention,
-        bool wasTraveling,
         size_t originLocId,
         const Edge& blockedEdge,
         std::vector<State> affectedStates)
-        : intervention{intervention}, wasTraveling{wasTraveling},
+        : intervention{intervention},
           originLocId{originLocId}, blockedEdge{blockedEdge},
           affectedStates{std::move(affectedStates)} {}
    public:
-    // Identity or Travel patch
-    explicit Patch(Intervention intervention, bool wasTraveling = false)
-        : Patch(intervention, wasTraveling, NULL_ID, {}, {}) {}
+    // Identity patch
+    explicit Patch(Intervention intervention)
+        : Patch(intervention, NULL_ID, {}, {}) {}
 
     // Drive patch
     Patch(Intervention intervention, size_t originLocId)
-        : Patch(intervention, false, originLocId, {}, {}) {}
+        : Patch(intervention, originLocId, {}, {}) {}
 
     // Block patch
     Patch(Intervention intervention, const Edge blockedEdge, const State& subjectState)
-        : Patch(intervention, false, NULL_ID, blockedEdge, {subjectState}) {}
+        : Patch(intervention, NULL_ID, blockedEdge, {subjectState}) {}
 
     const Intervention intervention;
-    const bool wasTraveling;
     const size_t originLocId;
     const Edge blockedEdge;
     /**
@@ -512,18 +505,6 @@ class Logistics {
    * possible load/unload or drive truck actions
    */
   [[nodiscard]] std::vector<SuccessorBundle<Logistics>> successors(const State& state) const {
-    // if traveling, just return drive action
-    if (state.travelTime > 0) {
-      // shouldn't be possible for it to not have a value
-      assert(state.driveAction.has_value());
-
-      return {
-          SuccessorBundle<Logistics>(
-          transition(state, state.driveAction.value()).value(),
-          state.driveAction.value(),
-          actionDuration)
-      };
-    }
     std::vector<SuccessorBundle<Logistics>> successors{};
 
     // loop through all trucks, looking for drive, load, and unload actions
@@ -629,20 +610,14 @@ class Logistics {
         InterventionBundle<Logistics>(getIdentityIntervention(), interventionCost)
     };
 
-    if (observerTravelTime > 0) {
+    // loop over all edges to find somewhere to travel to or block
+    for (const Edge& edge : edgeLookup[observerLoc]) {
+      // travel
       interventions.emplace_back(
-          Intervention(observerLoc, Intervention::DRIVE),
-          interventionCost);
-    } else {
-      // loop over all edges to find somewhere to travel to or block
-      for (const Edge& edge : edgeLookup[observerLoc]) {
-        // travel
-        interventions.emplace_back(
-            Intervention(edge.toLoc, Intervention::DRIVE), interventionCost);
-        // block
-        interventions.emplace_back(
-            Intervention(edge.toLoc, Intervention::BLOCK), interventionCost);
-      }
+          Intervention(edge.toLoc, Intervention::DRIVE), interventionCost);
+      // block
+      interventions.emplace_back(
+          Intervention(edge.toLoc, Intervention::BLOCK), interventionCost);
     }
 
     return interventions;
@@ -669,19 +644,8 @@ class Logistics {
 
     // Drive
     if (intervention.type == Intervention::DRIVE) {
-      // checks if the observer is already traveling
-      if (observerTravelTime > 0) {
-        if (observerLoc != intervention.locationId) {
-          return {}; // already driving to a different location
-        }
-        observerTravelTime--;
-        return {Patch(intervention, true)};
-      }
-
       for (const Edge& edge : edgeLookup[observerLoc]) {
         if (edge.toLoc == intervention.locationId) {
-          observerTravelTime = edge.edgeCost - 1;
-
           auto patch = Patch(intervention, observerLoc);
           observerLoc = edge.toLoc;
           return {patch};
@@ -712,10 +676,7 @@ class Logistics {
    * This method will mutate the domain
    */
   void reversePatch(const Patch& patch, [[maybe_unused]] const State& subjectState) {
-    if (patch.wasTraveling) {
-      observerTravelTime++;
-    } else if (patch.intervention.type == Intervention::DRIVE) {
-      observerTravelTime = 0;
+    if (patch.intervention.type == Intervention::DRIVE) {
       observerLoc = patch.originLocId;
     } else if (patch.intervention.type == Intervention::BLOCK) {
       edgeLookup[observerLoc].push_front(patch.blockedEdge);
@@ -764,7 +725,7 @@ class Logistics {
     for (size_t i = 0; i < numPkgs; i++) {
       size_t goalPkgLoc = underspecifiedState.pkgLocations[i];
       if (goalPkgLoc == NULL_ID) {
-        continue; // not part of goal spec, so we ignoremeasures
+        continue; // not part of goal spec, so we ignore measures
       }
 
       // Package is in transit
@@ -773,16 +734,14 @@ class Logistics {
         continue;
       }
 
-      // Package not in transit. Must LOAD/UNLOAD at least
-      minDistance += 2;
-      // Find min edge from current pkg location
-      auto costComparator = [](const Edge& a, const Edge& b) {
-        return a.edgeCost < b.edgeCost;
-      };
       const auto& edgeList = edgeLookup[state.pkgLocations[i]];
-      const Edge& minEdge = *std::min_element(edgeList.cbegin(), edgeList.cend(), costComparator);
-
-      minDistance += minEdge.edgeCost;
+      // if edge list is empty, it means this goal cannot be achieved
+      if (edgeList.empty()) {
+        // divide by action duration so that it doesn't overflow
+        return std::numeric_limits<Cost>::max() / actionDuration;
+      }
+      // Package not in transit. Must at least LOAD/UNLOAD and travel
+      minDistance += 3;
     }
     return minDistance;
   }
@@ -841,30 +800,10 @@ class Logistics {
   [[nodiscard]] std::optional<const State> drive(const State& state, const Action& action) const {
     State successor{state};
 
-    // checks either that the truck is not already driving or that
-    // the truck is driving to the same location
-    if (successor.travelTime > 0) {
-      if (state.truckLocations[action.truckId] != action.locationId) {
-        return {}; // already driving to a different location
-      }
-
-      successor.travelTime--;
-      if (successor.travelTime == 0) {
-        successor.driveAction = {};
-      }
-      return successor;
-    }
-
     size_t truckLocation = successor.truckLocations[action.truckId];
     for (const Edge& edge : edgeLookup[truckLocation]) {
       if (edge.toLoc == action.locationId) {
         successor.truckLocations[action.truckId] = edge.toLoc;
-        successor.travelTime = edge.edgeCost - 1;
-
-        // if there's travel time, store drive action for later usage
-        if (successor.travelTime > 0) {
-          successor.driveAction = action;
-        }
 
         return successor;
       }
@@ -894,8 +833,6 @@ class Logistics {
 
   // Observer
   size_t observerLoc = NULL_ID;
-  // if observer is traveling, will be recorded here
-  size_t observerTravelTime = 0;
 
   // Configuration
   const Cost actionDuration;

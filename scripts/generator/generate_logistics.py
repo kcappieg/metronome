@@ -4,6 +4,7 @@ import os
 import argparse
 from math import floor, ceil
 import numpy as np
+from collections import deque
 
 __author__ = 'Kevin C. Gall'
 
@@ -21,6 +22,7 @@ def main(args):
     density = args.density
     topology = args.topology
     clusters = args.clusters
+    connection_distance = args.connection_distance
     trucks = args.trucks
     packages = args.packages
 
@@ -37,12 +39,17 @@ def main(args):
         network_builder = ClusterNetwork(locations, density, clusters)
     elif topology == 'cycle':
         network_builder = CycleNetwork(locations, density)
-
-    # get base file name
-    file_name = f'{topology}_{density}dense_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
+    elif topology == 'geometric':
+        network_builder = GeometricNetwork(locations, connection_distance)
 
     if topology == 'cluster':
-        file_name = clusters + file_name
+        file_name = f'{clusters}clusters_{density}dense'
+    elif topology == 'geometric':
+        file_name = f'geometric_{connection_distance}dist'
+    else:
+        file_name = f'{topology}_{density}dense'
+
+    file_name += f'_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
 
     for i in range(total):
         # create network topology
@@ -64,10 +71,11 @@ def main(args):
         for _ in range(goals):
             hyp = list()
             # weighting 2-goal combos higher than others
-            for _ in range(np.random.choice([1, 2, 3], p=[0.25, 0.5, 0.25])):
-                hyp.append(f'({np.random.randint(0, packages)} {np.random.randint(0, locations)})')
+            num_conditions = np.random.choice([1, 2, 3], p=[0.25, 0.5, 0.25])
 
-            raise Exception('Above is wrong. Could select same package for 2 goal conditions in the same hypothesis')
+            for pkg in np.random.choice(packages, num_conditions, replace=False):
+                hyp.append(f'({pkg} {np.random.randint(0, locations)})')
+
             instance += ','.join(hyp) + '\n'
 
         # observer
@@ -83,10 +91,9 @@ class Network:
     def __init__(self, locations, density):
         self._num_locations = locations
         self._location_list = np.arange(locations)
-        self._density = density
         # Potential Connections
-        self._pc = (locations * (locations - 1)) / 2
-        self._max_connections = floor(self._density * self._pc)
+        pc = (locations * (locations - 1)) / 2
+        self._max_connections = floor(density * pc)
 
     def generate_base_network(self):
         '''Generate the base network
@@ -135,7 +142,7 @@ class ClusterNetwork(Network):
         # using choice like a shuffle, just not in place
         shuffled_list = np.random.choice(self._location_list, self._num_locations, replace=False)
 
-        max_cluster_size = ceil((self._num_locations) / self._clusters)
+        max_cluster_size = ceil(self._num_locations / self._clusters)
         cluster_leaf_lists = list()
         current_leaf_list = None
 
@@ -189,6 +196,75 @@ class CycleNetwork(Network):
 
         return network
 
+class GeometricNetwork:
+    def __init__(self, locations, connection_distance):
+        self._num_locations = locations
+        self._max_dist_sq = connection_distance ** 2
+
+    def get_geometric_graph(self):
+        locations = [
+            (np.random.random_sample(), np.random.random_sample())
+            for _ in range(self._num_locations)
+        ]
+        # naive n^2 connection. Shouldn't be a problem w/ amount of locations we'll generate
+
+        edge_lookup = [list() for _ in range(self._num_locations)]
+        for i in range(self._num_locations - 1):
+            for j in range(i+1, self._num_locations):
+                dist_sq = euclidean_dist_sq(locations[i], locations[j])
+                if dist_sq <= self._max_dist_sq:
+                    edge = (i, j, dist_sq)
+                    edge_lookup[i].append(edge)
+                    edge_lookup[j].append(edge)
+
+        return edge_lookup
+
+    def generate_network(self):
+        connected_network = None
+        for try_idx in range(10):
+            edge_lookup = self.get_geometric_graph()
+
+            # run reachability search
+            closed = {0}
+            q = deque([0])
+
+            while len(q) > 0:
+                loc = q.popleft()
+                for edge in edge_lookup[loc]:
+                    other = edge[0] if edge[0] != loc else edge[1]
+                    if other not in closed:
+                        q.append(other)
+                        closed.add(other)
+
+            # not fully connected. Throw out and try again
+            if len(closed) < self._num_locations:
+                continue
+
+            # otherwise build network
+            connected_network = set()
+            for edge_list in edge_lookup:
+                for edge in edge_list:
+                    connected_network.add(edge)
+
+        if connected_network is None:
+            raise Exception('Could not generate connected geometric graph with given distance. '
+                            'Try increasing connection distance')
+
+        network_desc = ''
+        for edge in connected_network:
+            cost = ceil(5.0 * (edge[2] / self._max_dist_sq))
+            network_desc += f'{edge[0]} {edge[1]} {cost}\n'
+
+        return network_desc
+
+
+        return connected_network
+
+
+def euclidean_dist_sq(pt1, pt2):
+    '''Helper - Euclidean dist between points, squared'''
+    return ((pt1[0] - pt2[0]) ** 2) + ((pt1[1] - pt2[1]) ** 2)
+
 
 if __name__ == '__main__':
     # Begin Argument Definition
@@ -199,14 +275,18 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--locations', help='Number of locations', type=int, default=3)
     parser.add_argument('-g', '--goals', help='total number of possible goals to generate', type=int, default=1)
     parser.add_argument('-t', '--total', help='total number of instances to generate', type=int, default=1)
-    parser.add_argument('-d', '--density', help='Max density of network. Not guaranteed, simply a guide to the '
-                                                'generator',
+    parser.add_argument('-s', '--density', help='Max density of network. Not guaranteed, simply a guide to the '
+                                                'generator. If topology is geometric, this value is ignored.',
                         type=float, default=0)
     parser.add_argument('--topology', help='Cluster creates groups with central nodes. Cycle distributes connections'
-                                           'more evenly throughout the network',
-                        choices=['cluster', 'cycle'], default='cycle')
+                                           'more evenly throughout the network. Geometric is based on random'
+                                           'sampling within unit square',
+                        choices=['cluster', 'cycle', 'geometric'], default='geometric')
     # TODO: add option for cost range. Just using 1 - 5 for now.
     # TODO: add option for goal fluent count. Just using 1 - 3 for now.
+    parser.add_argument('-d', '--connection-distance',
+                        help='If topology is geometric, defines the connection distance between (0,1)',
+                        type=float, default=0.2)
     parser.add_argument('-c', '--clusters', help='If topology is cluster, how many clusters to create',
                         type=int, default=1)
     parser.add_argument('-k', '--trucks', help='Number of trucks', type=int, default=1)

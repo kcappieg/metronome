@@ -10,5 +10,5 @@
   "goalPriors": [0.34, 0.33, 0.33],
   "maxDepth": 1000,
   "domainName": "LOGISTICS",
-  "domainPath": "logistics/simple.logistics"
+  "domainPath": "logistics/3-goal/geometric_0.4dist_3goal_10loc_3pkg_2trk_0.logistics"
 }
