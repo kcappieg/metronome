@@ -1,0 +1,30 @@
+--- Start location of agent
+Agent:([x],[y])
+
+--- List of possible goal locations
+Goals:
+([x],[y])
+--- etc... ---
+
+--- List of keys
+--- Each key shape could be duplicated in multiple locations
+Keys:
+1:([x],[y])
+1:([x'],[y'])
+2:([x''],[y''])
+--- etc... ---
+
+--- List of locked doors. The number of the door is the shape key it takes, and can be duplicated
+Doors:
+1:([x],[y])
+2:([x'],[y'])
+2:([x''],[y''])
+--- etc... ---
+
+--- Optional below here (observer info) ---
+Observer:([x],[y])
+
+--- NOTES ---
+
+Blank lines are skipped.
+This template includes comments on lines beginning with '---', but actual domain files cannot have any comments.

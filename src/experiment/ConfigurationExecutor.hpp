@@ -101,7 +101,7 @@ class ConfigurationExecutor {
     }
 #endif
 
-#ifdef ENABLE_GRID_WORLD
+#ifdef ENABLE_LOGISTICS
     if (domainName == DOMAIN_LOGISTICS) {
       return executeDomain<Logistics>(configuration, resourcesDir);
     }
@@ -276,6 +276,8 @@ class ConfigurationExecutor {
       throw MetronomeException("Domain not found.");
     }
   }
+
+  // TODO Template specialization for KeyGrid domain -> needs 2 fstreams
 
   template <typename Domain, typename Planner>
   static Result executeOfflinePlanner(const Configuration& configuration,
