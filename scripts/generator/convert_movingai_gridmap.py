@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Converts movingai.com 2d gridmaps into ascii format used
 # by this repository
 # Currently only converts the base map, does not take scenario,

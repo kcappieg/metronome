@@ -67,7 +67,7 @@ set(SOURCE_FILES
 		src/algorithms/TrivialGrdPlanner.hpp
 		src/algorithms/DynamicPlanner.hpp
 		src/algorithms/NaiveDynamicAStar.hpp
-		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp)
+		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp src/domains/KeyGrid.h)
 
 set(TEST_FILES
         test/test.cpp

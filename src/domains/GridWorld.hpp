@@ -70,10 +70,17 @@ class GridWorld {
 
     [[nodiscard]] char toChar() const { return label; }
 
+    std::string toString() const {
+      std::ostringstream actionStr{};
+      actionStr << label << " (dx: " << relativeX()
+                << " dy: " << relativeY() << ")";
+
+      return actionStr.str();
+    }
+
+
     friend std::ostream& operator<<(std::ostream& os, const Action& action) {
-      os << action.label << " (dx: " << action.relativeX()
-         << " dy: " << action.relativeY() << ")";
-      return os;
+      return os << action.toString();
     }
 
    private:
@@ -102,10 +109,16 @@ class GridWorld {
       return *this;
     }
 
+    [[nodiscard]] std::string toString() const {
+      std::ostringstream stateStr{};
+      stateStr << "x: " << getX() << " y: " << getY();
+
+      return stateStr.str();
+    }
+
     friend std::ostream& operator<<(std::ostream& stream,
                                     const GridWorld::State& state) {
-      stream << "x: " << state.getX() << " y: " << state.getY();
-      return stream;
+      return stream << state.toString();
     }
 
    private:
@@ -184,8 +197,15 @@ class GridWorld {
     const std::vector<State> affectedStates;
   };
 
-  /*Entry point for using this Domain*/
-  GridWorld(const Configuration& configuration, std::istream& input)
+  /**
+   * Reads grid map from input stream
+   * @param configuration
+   * @param input
+   * @param lazyScene If specified, allows for lazy instantiation of the scene:
+   * goals and agent start position can be specified later
+   */
+  GridWorld(const Configuration& configuration, std::istream& input,
+            bool lazyScene = false)
       : actionDuration(configuration.getLong(ACTION_DURATION, 1)),
         interventionCost(configuration.getLong(INTERVENTION_COST, 1)),
         heuristicMultiplier(configuration.getDouble(HEURISTIC_MULTIPLIER, 1)) {
@@ -256,17 +276,18 @@ class GridWorld {
           "configuration.");
     }
 
-    if (!tempStartState.has_value() || goalLocations.empty()) {
+    if (!lazyScene &&
+        (!tempStartState.has_value() || goalLocations.empty())) {
       throw MetronomeException(
           "GridWorld unknown start or goal location. Start or goal location is "
           "not defined.");
-    }
-
-    startLocation = tempStartState.value();
-    // If only 1 goal, set the singleGoal property
-    if (goalLocations.size() == 1) {
-      useSingleGoal = true;
-      singleGoal = *goalLocations.cbegin();
+    } else {
+      startLocation = tempStartState.value();
+      // If only 1 goal, set the singleGoal property
+      if (goalLocations.size() == 1) {
+        useSingleGoal = true;
+        singleGoal = *goalLocations.cbegin();
+      }
     }
   }
 
@@ -306,6 +327,20 @@ class GridWorld {
    */
   std::vector<State> getGoals() const {
     return goalVector;
+  }
+
+  /**
+   * Allows for lazy-instantiation of goals
+   * @param newGoalLocations
+   */
+  void addGoals(std::vector<State> newGoalLocations) {
+    goalLocations.insert(newGoalLocations.begin(), newGoalLocations.end());
+    goalVector.insert(goalVector.end(), newGoalLocations.begin(), newGoalLocations.end());
+
+    if (goalLocations.size() == 1) {
+      useSingleGoal = true;
+      singleGoal = *goalLocations.cbegin();
+    }
   }
 
   /*Validating an obstacle state*/
