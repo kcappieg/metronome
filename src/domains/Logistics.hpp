@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 #include "SuccessorBundle.hpp"
+#include "utils/String.hpp"
 
 namespace metronome {
 
@@ -303,12 +304,6 @@ class Logistics {
       heuristicMultiplier(configuration.getDouble(HEURISTIC_MULTIPLIER, 1)) {
     std::string line;
     bool notEof;
-
-//    {
-//      State testState{};
-//      testState.pkgLocations.push_back(NULL_ID);
-//      std::cout << testState;
-//    }
 
     // get first line, which should correspond to locations
     const std::string locPrefix = "Locations:";
@@ -686,26 +681,6 @@ class Logistics {
 
  private:
   // Private utility functions
-  /** Returns false if EOF, true if success */
-  static bool getNextLine(std::string& line, std::istream& input) {
-    do {
-      if(!getline(input, line)) {
-        return false;
-      }
-    } while (line.empty());
-    return true;
-  }
-
-  [[nodiscard]] static std::vector<std::string> split(const std::string& str, const char delim) {
-    std::vector<std::string> out;
-    size_t start = 0, end = 0;
-    while ((start = str.find_first_not_of(delim, end)) != std::string::npos) {
-      end = str.find(delim, start);
-      out.push_back(str.substr(start, end - start));
-    }
-
-    return out;
-  }
 
   /**
    * Computes a lower bound distance in time steps between 2 states, including

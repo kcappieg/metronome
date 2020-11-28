@@ -439,9 +439,61 @@ class VacuumWorld {
   }
 
   Cost getActionDuration() const { return actionDuration; }
-  Cost getActionDuration(const Action& action) const { return actionDuration; }
+  Cost getActionDuration(const Action& /*action*/) const { return actionDuration; }
 
   Action getIdentityAction() const { return Action('0'); }
+
+  // GRD methods
+
+  // TODO Support GRD
+
+  class Intervention{
+   public:
+    bool operator==(const Intervention&) const {
+      throw MetronomeException("Not Implemented");
+    }
+
+    friend std::ostream& operator<<(std::ostream&, const Intervention&) {
+      throw MetronomeException("Not implemented");
+    }
+  };
+  class Patch{
+   public:
+    std::vector<State> affectedStates;
+  };
+
+  void setCurrentGoal(const State&) {
+    throw MetronomeException("Not Implemented");
+  }
+  void clearCurrentGoal() {
+    throw MetronomeException("Not Implemented");
+  }
+
+  std::vector<State> getGoals() const {
+    throw MetronomeException("Not Implemented");
+  }
+
+  bool isGoal(const State&, const State&) const {
+    throw MetronomeException("Not Implemented");
+  }
+
+  std::vector<InterventionBundle<VacuumWorld>> interventions(
+      const State&, const std::vector<State>&) const {
+    throw MetronomeException("Not Implemented");
+  }
+
+  Intervention getIdentityIntervention() const {
+    throw MetronomeException("Not Implemented");
+  }
+
+  std::optional<Patch> applyIntervention(
+      const Intervention&, const State&) {
+    throw MetronomeException("Not Implemented");
+  }
+
+  void reversePatch(const Patch&, const State&) {
+    throw MetronomeException("Not Implemented");
+  }
 
  private:
   unsigned int manhattanDistance(const State& state,

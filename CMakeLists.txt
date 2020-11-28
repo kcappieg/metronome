@@ -35,6 +35,7 @@ set(SOURCE_FILES
         src/algorithms/planner_tools/Comparators.hpp
 		src/algorithms/TimeBoundedAStar.hpp
         src/domains/GridWorld.hpp
+		src/domains/GridMap.hpp
 		src/domains/Logistics.hpp
         src/domains/Domain.hpp
         src/domains/SlidingTilePuzzle.hpp
@@ -67,7 +68,7 @@ set(SOURCE_FILES
 		src/algorithms/TrivialGrdPlanner.hpp
 		src/algorithms/DynamicPlanner.hpp
 		src/algorithms/NaiveDynamicAStar.hpp
-		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp src/domains/KeyGrid.h)
+		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp src/domains/KeyGrid.hpp src/domains/GridMap.hpp)
 
 set(TEST_FILES
         test/test.cpp
@@ -113,7 +114,7 @@ add_definitions(-DENABLE_GRID_WORLD)
 add_definitions(-DENABLE_LOGISTICS)
 #add_definitions(-DENABLE_DYNAMIC_GRID_WORLD)
 #add_definitions(-DENABLE_ORIENTATION_GRID)
-#add_definitions(-DENABLE_VACUUM_WORLD)
+add_definitions(-DENABLE_VACUUM_WORLD)
 #add_definitions(-DENABLE_SLIDING_TILE_PUZZLE)
 #add_definitions(-DENABLE_TRAFFIC_WORLD)
 

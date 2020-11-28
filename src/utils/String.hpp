@@ -20,4 +20,14 @@ std::vector<std::string> split(const std::string &string, char delimiter) {
     return tokens;
 }
 
+/** Returns false if EOF, true if success */
+bool getNextLine(std::string& line, std::istream& input) {
+  do {
+    if(!getline(input, line)) {
+      return false;
+    }
+  } while (line.empty());
+  return true;
+}
+
 #endif //METRONOME_STRING_HPP

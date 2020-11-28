@@ -6,6 +6,8 @@ Goals:
 ([x],[y])
 --- etc... ---
 
+--- OPTIONAL (info for Key Grid; KeyGrid ONLY) ---
+
 --- List of keys
 --- Each key shape could be duplicated in multiple locations
 Keys:
@@ -21,8 +23,14 @@ Doors:
 2:([x''],[y''])
 --- etc... ---
 
---- Optional below here (observer info) ---
+--- OPTIONAL (observer info) ---
 Observer:([x],[y])
+
+--- Interventions (GridMap ONLY) ---
+Interventions:
+([x],[y])
+([x'],[y'])
+--- etc... ---
 
 --- NOTES ---
 

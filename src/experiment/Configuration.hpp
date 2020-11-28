@@ -14,6 +14,7 @@ namespace metronome {
 static const std::string RAW_DOMAIN{"rawDomain"};
 static const std::string DOMAIN_NAME{"domainName"};
 static const std::string DOMAIN_PATH{"domainPath"};
+static const std::string SCENE_PATH{"scenePath"};
 static const std::string DOMAIN_INSTANCE{"domainInstanceName"};
 static const std::string ALGORITHM_NAME{"algorithmName"};
 static const std::string TERMINATION_CHECKER_TYPE{"terminationType"};
@@ -26,6 +27,7 @@ static const std::string SEED("seed");
 
 // Domains
 static const std::string DOMAIN_GRID_WORLD{"GRID_WORLD"};
+static const std::string DOMAIN_GRID_MAP{"GRID_MAP"};
 static const std::string DOMAIN_LOGISTICS{"LOGISTICS"};
 static const std::string DOMAIN_DYNAMIC_GRID_WORLD{"DYNAMIC_GRID_WORLD"};
 static const std::string DOMAIN_ORIENTATION_GRID{"ORIENTATION_GRID"};

@@ -16,6 +16,7 @@
 
 #ifdef ENABLE_GRID_WORLD
 #include "domains/GridWorld.hpp"
+#include "domains/GridMap.hpp"
 #endif
 #ifdef ENABLE_LOGISTICS
 #include "domains/Logistics.hpp"
@@ -62,6 +63,81 @@
 
 namespace metronome {
 
+/* We need template specializations for getDomain function, so that must be pulled
+ * out of the class definition and into a free-floating function
+ */
+
+template<typename Domain>
+static Domain getDomain(const Configuration& configuration,
+                        const std::string& resourcesDir) {
+  if (configuration.hasMember(RAW_DOMAIN)) {
+    std::string rawDomain{configuration.getString(RAW_DOMAIN)};
+    std::stringstream stringStream{rawDomain};
+
+    return Domain{configuration, stringStream};
+  } else if (configuration.hasMember(DOMAIN_PATH)) {
+    std::string domainPath{resourcesDir +
+                           configuration.getString(DOMAIN_PATH)};
+
+    // Check if file exists
+    if (!fileExists(domainPath)) {
+      throw MetronomeException{"Invalid domain file path: " + domainPath};
+    }
+
+    std::fstream fileInputStream;
+    fileInputStream.open(domainPath, std::fstream::in);
+    Domain domain{configuration, fileInputStream};
+    fileInputStream.close();
+
+    return domain;
+  } else {
+    throw MetronomeException("Domain not found.");
+  }
+}
+
+/**
+ * For domains that also take a Scene input.
+ * Note: does not permit Raw input; must be files
+ * @tparam Domain
+ * @param configuration
+ * @param resourcesDir
+ * @return
+ */
+template<typename Domain>
+static Domain getDomainWithScene(const Configuration& configuration,
+                                 const std::string& resourcesDir) {
+  if (!configuration.hasMember(DOMAIN_PATH) || !configuration.hasMember(SCENE_PATH)) {
+    throw MetronomeException("Domain and scene file paths required for grid map");
+  }
+
+  std::string domainPath{resourcesDir +
+                         configuration.getString(DOMAIN_PATH)};
+  std::string scenePath{resourcesDir +
+                        configuration.getString(SCENE_PATH)};
+
+  // Check if files exist
+  if (!fileExists(domainPath)) {
+    throw MetronomeException{"Invalid domain file path: " + domainPath};
+  }
+  if (!fileExists(scenePath)) {
+    throw MetronomeException{"Invalid scene file path: " + scenePath};
+  }
+
+  std::fstream mapInputStream;
+  std::fstream sceneInputStream;
+
+  mapInputStream.open(domainPath, std::fstream::in);
+  sceneInputStream.open(scenePath, std::fstream::in);
+
+  Domain domain{configuration, mapInputStream, sceneInputStream};
+
+  mapInputStream.close();
+  sceneInputStream.close();
+
+  return domain;
+}
+
+
 class ConfigurationExecutor {
  public:
   static Result executeConfiguration(const Configuration& configuration,
@@ -98,6 +174,10 @@ class ConfigurationExecutor {
 #ifdef ENABLE_GRID_WORLD
     if (domainName == DOMAIN_GRID_WORLD) {
       return executeDomain<GridWorld>(configuration, resourcesDir);
+    }
+
+    if (domainName == DOMAIN_GRID_MAP) {
+      return executeDomain<GridMap>(configuration, resourcesDir);
     }
 #endif
 
@@ -249,36 +329,6 @@ class ConfigurationExecutor {
     return Result(configuration, "Unknown: algorithmName: " + algorithmName);
   }
 
-  template <typename Domain>
-  static Domain getDomain(const Configuration& configuration,
-                          const std::string& resourcesDir) {
-    if (configuration.hasMember(RAW_DOMAIN)) {
-      std::string rawDomain{configuration.getString(RAW_DOMAIN)};
-      std::stringstream stringStream{rawDomain};
-
-      return Domain{configuration, stringStream};
-    } else if (configuration.hasMember(DOMAIN_PATH)) {
-      std::string domainPath{resourcesDir +
-                             configuration.getString(DOMAIN_PATH)};
-
-      // Check if file exists
-      if (!fileExists(domainPath)) {
-        throw MetronomeException{"Invalid domain file path: " + domainPath};
-      }
-
-      std::fstream fileInputStream;
-      fileInputStream.open(domainPath, std::fstream::in);
-      Domain domain{configuration, fileInputStream};
-      fileInputStream.close();
-
-      return domain;
-    } else {
-      throw MetronomeException("Domain not found.");
-    }
-  }
-
-  // TODO Template specialization for KeyGrid domain -> needs 2 fstreams
-
   template <typename Domain, typename Planner>
   static Result executeOfflinePlanner(const Configuration& configuration,
                                       const Domain& domain) {
@@ -322,5 +372,15 @@ class ConfigurationExecutor {
     return Result(configuration, "Unknown Subject algorithm: " + subjectAlgorithm);
   }
 };
+
+// TODO Template specialization for KeyGrid domain -> needs 2 fstreams
+
+#ifdef ENABLE_GRID_WORLD
+template<>
+GridMap getDomain<GridMap>(const Configuration& configuration,
+                                             const std::string& resourcesDir) {
+  return getDomainWithScene<GridMap>(configuration, resourcesDir);
+}
+#endif
 
 }  // namespace metronome

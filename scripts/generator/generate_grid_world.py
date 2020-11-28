@@ -3,12 +3,8 @@
 import os
 import sys
 import argparse
-import random
 import numpy as np
-import math
-import copy
-from subprocess import run, PIPE, Popen
-import json
+import rand_seed
 from shutil import copyfile
 
 __author__ = 'Kevin C. Gall'
@@ -18,12 +14,12 @@ __author__ = 'Kevin C. Gall'
 #   around 10% solvable
 
 
-def generate_goals(goals, width, height, start):
+def generate_goals(goals, width, height, start, observer_start = None):
     goal_set = set()
     if goals > 1:
         while len(goal_set) < goals:
-            goal = (random.randint(0, width-1), random.randint(0, height-1))
-            if goal != start:
+            goal = (np.random.randint(0, width-1), np.random.randint(0, height-1))
+            if goal != start and goal != observer_start:
                 goal_set.add(goal)
     else:
         goal_set.add((width - 2, height - 2))
@@ -39,15 +35,16 @@ class SingleObstacleStrategy:
         self.height = height
         self.probability = probability
         self.intervention_percentage = intervention_percentage
+        self._observer_start = None
 
     def generate_goals(self, goals):
-        return generate_goals(goals, self.width, self.height, self.get_start())
+        return generate_goals(goals, self.width, self.height, self.get_start(), self._observer_start)
 
     def get_obstacles(self):
         obstacle_locations = set()
         for y in range(0, self.height):
             for x in range(0, self.width):
-                if random.random() < self.probability:
+                if np.random.random() < self.probability:
                     obstacle_locations.add((x, y))
 
         return obstacle_locations
@@ -59,7 +56,7 @@ class SingleObstacleStrategy:
 
         for y in range(0, self.height):
             for x in range(0, self.width):
-                if (x, y) not in obstacle_locations and random.random() < self.intervention_percentage:
+                if (x, y) not in obstacle_locations and np.random.random() < self.intervention_percentage:
                     intervention_locations.add((x, y))
 
         return intervention_locations
@@ -67,8 +64,17 @@ class SingleObstacleStrategy:
     def get_start(self):
         return 1, 1
 
+    def get_observer_start(self):
+        obs_start = (1, 1)
+        while obs_start == (1, 1):
+            obs_start = (np.random.randint(0, self.width-1), np.random.randint(0, self.height-1))
+
+        self._observer_start = obs_start
+        return obs_start
+
+
     def reset(self):
-        pass
+        np.random.seed(rand_seed.next_seed())
 
 
 class EnclosureObstacleStrategy:
@@ -90,7 +96,7 @@ class EnclosureObstacleStrategy:
         firstVector = dict()
         midVector = dict()
         lastVector = dict()
-        direction = random.randint(0, 3)
+        direction = np.random.randint(0, 3)
 
         if (direction == 0):
             firstVector['x'] = -1
@@ -108,7 +114,7 @@ class EnclosureObstacleStrategy:
         lastVector['x'] = -firstVector['x']
         lastVector['y'] = -firstVector['y']
 
-        nextDirection = random.randint(0, 1)
+        nextDirection = np.random.randint(0, 1)
         if nextDirection == 0:
             nextDirection = -1
 
@@ -124,9 +130,9 @@ class EnclosureObstacleStrategy:
 
     def add_enclosure(self, obstacleTracker, start):
         # Get random size for the enclosure
-        firstWallSize = random.randint(1, self.sizeBound)
-        midWallSize = random.randint(1, self.widthSizeBound)
-        lastWallSize = firstWallSize + 1 if self.equalLength else random.randint(1, self.sizeBound)
+        firstWallSize = np.random.randint(1, self.sizeBound)
+        midWallSize = np.random.randint(1, self.widthSizeBound)
+        lastWallSize = firstWallSize + 1 if self.equalLength else np.random.randint(1, self.sizeBound)
 
         # get the directions - which way does the wall extend from its starting position
         obstacleDirections = self.directions if self.directions != None else self.get_directions()
@@ -138,13 +144,13 @@ class EnclosureObstacleStrategy:
         # get random exits - "holes" in the walls where an agent can pass through
         exitSet = set()
         while len(exitSet) < self.exits:
-            exitWall = random.randint(0, 1)
+            exitWall = np.random.randint(0, 1)
             # only the length walls have exits
             if exitWall == 1:
                 exitWall = 2
 
             wallSize = firstWallSize if exitWall == 0 else lastWallSize
-            exitLoc = random.randint(0, wallSize)
+            exitLoc = np.random.randint(0, wallSize)
 
             exitSet.add((exitWall, exitLoc))
 
@@ -160,7 +166,7 @@ class EnclosureObstacleStrategy:
         obstacle_locations = set()
         for y in range(0, self.height):
             for x in range(0, self.width):
-                if random.random() < self.probability:
+                if np.random.random() < self.probability:
                     self.add_enclosure(obstacle_locations, (x, y))
 
         return obstacle_locations
@@ -328,6 +334,7 @@ def main(args):
     goals = args.goals
     obstacle_percentage = args.obstacle_probability
     intervention_percentage = args.intervention_probability
+    observer = args.observer
 
     # Size bound for enclosures calculated using power
     size_bound = max(int(height ** 0.7), 1)
@@ -400,8 +407,13 @@ def main(args):
         preamble = str(width)+'\n'+str(height)+'\n'
         world = ''
 
-        goal_set = domain_builder.generate_goals(goals)
+        obs_start = (None, None)
+        if observer:
+            obs_start = domain_builder.get_observer_start()
+
+        obs_x, obs_y = obs_start
         start_x, start_y = domain_builder.get_start()
+        goal_set = domain_builder.generate_goals(goals)
         obstacle_locations = domain_builder.get_obstacles()
         intervention_locations = domain_builder.get_interventions(obstacle_locations)
 
@@ -411,6 +423,10 @@ def main(args):
                     world += '@'
                     if (x, y) in goal_set:
                         raise Exception('Goal in same space as start')
+                elif (x == obs_x) and (y == obs_y):
+                    world += 'o'
+                    if (x, y) in goal_set:
+                        raise Exception('Goal in same space as observer - cannot happen for domain spec reasons')
                 elif (x, y) in goal_set:
                     world += '*'
                 elif (x, y) in obstacle_locations:
@@ -477,7 +493,10 @@ if __name__ == '__main__':
     parser.add_argument('width', help='the width of the Vehicle world', type=int)
     parser.add_argument('total', help='total number of worlds to generate', type=int)
     parser.add_argument('-g', '--goals', help='total number of goals to generate', type=int, default=1)
-    parser.add_argument('-p', '--path', help='directory path to save the worlds. MUST BE RELATIVE PATH to cwd. That is a known issue, but no time to fix', default='./gridworld')
+    parser.add_argument('-p', '--path',
+                        help='directory path to save the worlds. MUST BE RELATIVE PATH to cwd. '
+                             'That is a known issue, but no time to fix',
+                        default='./gridworld')
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-o', '--obstacle-probability', default=0.0, type=float,
                         help='probability of obstacle to begin in any given grid cell')
@@ -491,6 +510,7 @@ if __name__ == '__main__':
                          help='If tunnels strategy, the standard deviation to be used in the normal distribution for tunnel generation. Higher numbers make it more likely for tunnels to be closer to center')
     parser.add_argument('-f', '--filter', default=None, action='store_true',
                         help='Filter generated domains to only solvable. Assumes a previous build of Metronome. Executes A_STAR on each domain.')
+    parser.add_argument('--observer', action='store_true', help='Flag to add observer')
     parser.add_argument('-i', '--intervention-probability', default=0.0, type=float,
                         help='Probability of possible intervention in any given clear cell')
 

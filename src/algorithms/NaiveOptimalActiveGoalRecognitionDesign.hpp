@@ -23,6 +23,7 @@
 #include "utils/PriorityQueue.hpp"
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
+#include "utils/TimeMeasurement.hpp"
 
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 1
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 3
@@ -47,7 +48,7 @@ namespace metronome {
         std::vector<double> goalPriors = config.getDoubles(GOAL_PRIORS);
 
         size_t index = 0;
-        for (const State goal : domain.getGoals()) {
+        for (const State& goal : domain.getGoals()) {
           goalsToPriors[goal] = goalPriors[index++];
         }
       } else {
@@ -58,13 +59,16 @@ namespace metronome {
     std::vector<InterventionBundle<Domain>> selectInterventions(
             const State& subjectState, const Domain& systemState
     ) override {
+      const auto iterationStartTime = currentNanoTime();
       GoalRecognitionDesignPlanner<Domain>::beginIteration();
       // copy domain, set accessible pointer to it
       Domain localDomain(systemState);
       domain = &localDomain;
       depth = 0;
+      bool storeFirstIterationRuntime = false;
       if (!rootState.has_value()) {
         rootState = domain->getStartState();
+        storeFirstIterationRuntime = true;
       }
 
       if (!potentialOutcomes.empty()) {
@@ -94,6 +98,14 @@ namespace metronome {
 
       recomputeOptimalInfo(subjectState);
 
+      // Store optimal plan lengths, but only on first iteration
+      if (recomputeOptimalIteration == 1) {
+        size_t index = 0;
+        for (auto& entry : goalsToOptimalCost) {
+          Base::recordAttribute("Goal_" + std::to_string(index++), entry.second);
+        }
+      }
+
       InterventionTrialResult trialResult = interventionTrial(
           nodes[subjectState], nodes[subjectState]);
       std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
@@ -105,6 +117,14 @@ namespace metronome {
 
       depth = 0;
       Base::recordAttribute("numOptimalRecomputations", recomputeOptimalIteration - recomputeOptimalBegin);
+
+      const auto iterationEndTime = currentNanoTime();
+      // instead of averaging all iteration runtimes, we're most concerned with the
+      // first iteration for the Naive algorithm.
+      // You could imagine caching computation for subsequent iterations...
+      if (storeFirstIterationRuntime) {
+        Base::recordAttribute("firstIterationRuntime", iterationEndTime - iterationStartTime);
+      }
 
       if (intervention.has_value()) return {*intervention};
       return {};

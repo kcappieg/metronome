@@ -13,36 +13,16 @@ __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 
 def generate_base_configuration():
-    # required configuration parameters
-#   algorithms_to_run = ['TIME_BOUNDED_A_STAR']
-#   algorithms_to_run = ['CLUSTER_RTS']
-    algorithms_to_run = ['CLUSTER_RTS', 'TIME_BOUNDED_A_STAR', 'LSS_LRTA_STAR']
-#     algorithms_to_run = ['CLUSTER_RTS']
-#     algorithms_to_run = ['LSS_LRTA_STAR']
-#     algorithms_to_run = ['A_STAR']
-    expansion_limit = [100000000]
-    lookahead_type = ['DYNAMIC']
-    time_limit = [5 * 60 * 1000 * 1000000]
-    #     action_durations = [1]  # Use this for A*
-    action_durations = [
-        # 100000,
-        # 250000,
-        500000,
-        1000000,
-        3200000,
-        6400000,
-        12800000,
-        25600000,
-        51200000,
-    ]
-#     action_durations = list(range(100000, 600001, 20000)) 
-    action_durations = list(range(100000, 600001, 200000)) 
-    # action_durations = [100000, 500000, ]  # Use this for A*
-#     action_durations = [1]  # Use this for A*
+    # refactored for Active Goal Recognition
 
-    # action_durations = [50, 100, 250, 500, 1000]
-    termination_types = ['TIME']
-    step_limits = [100000000]
+    # required configuration parameters
+    algorithms_to_run = ['NAIVE_OPTIMAL_AGRD']
+    lookahead_type = ['DYNAMIC']
+    time_limit = [10 * 60 * 1000000000] # min as nanoseconds
+    action_durations = [1]  # Use this for A*
+
+    termination_types = ['EXPANSION']
+    # expansion_limit = [100000000]
 
     base_configuration = dict()
     base_configuration['algorithmName'] = algorithms_to_run
@@ -50,12 +30,12 @@ def generate_base_configuration():
     base_configuration['lookaheadType'] = lookahead_type
     base_configuration['actionDuration'] = action_durations
     base_configuration['terminationType'] = termination_types
-    # base_configuration['stepLimit'] = step_limits
     base_configuration['timeLimit'] = time_limit
     base_configuration['commitmentStrategy'] = ['SINGLE']
     base_configuration['commitmentStrategy'] = ['MULTIPLE']
     base_configuration['heuristicMultiplier'] = [1.0]
-    base_configuration['terminationTimeEpsilon'] = [5000000]  # 4ms
+    base_configuration['weight'] = [1.0]
+    # base_configuration['terminationTimeEpsilon'] = [5000000]  # 5ms
 
     compiled_configurations = [{}]
 
@@ -64,150 +44,34 @@ def generate_base_configuration():
                                                     key, value)
 
     # Algorithm specific configurations
-    weights = [1.0, 2.0, 4.0, 8.0]
-    # weights = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 1000000]
-    tba_weights = [
-         1.0,
-#                    1.5, 2.0 #, 16.0, 32.0, 64.0
-#       2.5
-#                    , 1.1, 1.4, 2.0, 8.0, 32.0
-#                    64.0
-                  ]
-#     tba_weights = [1.0, 1.1, 1.4, 2.0, 8.0, 32.0
-#                    64.0
-#                   ]
-    crts_weights = [1.0]
-    #     crts_weights = tba_weights
 
+    # Weights included as example for how to configure for specific algorithms
+    weights = [1.0]
     compiled_configurations = cartesian_product(compiled_configurations,
                                                 'weight', weights,
                                                 [['algorithmName',
                                                   'WEIGHTED_A_STAR']])
 
-    # No configurable resource ratio for RES at this time
+    # AGRD configurations
+    subject_algorithms = ['NAIVE_DYNAMIC']
     compiled_configurations = cartesian_product(compiled_configurations,
-                                                'threshold', [True],
+                                                'subjectAlgorithm', subject_algorithms,
                                                 [['algorithmName',
-                                                  'TIME_BOUNDED_A_STAR']])
+                                                  'NAIVE_OPTIMAL_AGRD']])
 
+    intervention_costs = [1]
     compiled_configurations = cartesian_product(compiled_configurations,
-                                                'shortcut', [False],
+                                                'interventionCost', intervention_costs,
                                                 [['algorithmName',
-                                                  'TIME_BOUNDED_A_STAR']])
+                                                  'NAIVE_OPTIMAL_AGRD']])
 
+    max_depth = [1000]
     compiled_configurations = cartesian_product(compiled_configurations,
-                                                'weight', tba_weights,
+                                                'maxDepth', max_depth,
                                                 [['algorithmName',
-                                                  'TIME_BOUNDED_A_STAR']])
-
-#     compiled_configurations = cartesian_product(compiled_configurations,
-#                                                 'tbaStrategy', ['GBFS'],
-#                                                 [['algorithmName',
-#                                                   'TIME_BOUNDED_A_STAR']])
-
-    # compiled_configurations = cartesian_product(compiled_configurations,
-    #                                             'projection', [True, False],
-    #                                             [['algorithmName',
-    #                                               'TIME_BOUNDED_A_STAR']])
-
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'weight', crts_weights,
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'clusterNodeLimit', [10000000],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'extractionCacheSize',
-                                                [100],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'tbaRouting', [False],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'clusterDepthLimit', [
-#                                                     50, 100, 500,
-                                                    500,
-#                                                     1000,
-#                                                     100000,
-#                                                     2000,
-                                                ],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'clusterGrowth', [True],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
-                                                    
-    compiled_configurations = cartesian_product(compiled_configurations,
-                                                'clusterGrowthRate', [1.001],
-                                                [['algorithmName',
-                                                  'CLUSTER_RTS']])
+                                                  'NAIVE_OPTIMAL_AGRD']])
 
     return compiled_configurations
-
-
-def generate_tile_puzzle():
-    configurations = generate_base_configuration()
-
-    puzzles = []
-#     for puzzle in range(1, 101):
-    for puzzle in range(1, 101):
-        puzzles.append(str(puzzle))
-
-    puzzle_base_path = 'input/tiles/korf/4/'
-    full_puzzle_paths = [puzzle_base_path + puzzle for puzzle in puzzles]
-
-    configurations = cartesian_product(configurations, 'domainName',
-                                       ['SLIDING_TILE_PUZZLE'])
-    configurations = cartesian_product(configurations, 'domainPath',
-                                       full_puzzle_paths)
-
-    return configurations
-
-
-def generate_vacuum_world():
-    configurations = generate_base_configuration()
-
-    domain_paths = []
-
-    # Build all domain paths
-    aligned_3g = 'input/vacuum/3goals/aligned_3g/corridors-aligned1500_1500-'
-    aligned_3g_paths = []
-    corridors_3g = 'input/vacuum/3goals/corridors_3g/corridors1500_1500-'
-    corridors_3g_paths = []
-    minima_3g = 'input/vacuum/3goals/minima_3g/minima1500_1500-'
-    minima_3g_paths = []
-    uniform_3g = 'input/vacuum/3goals/uniform_3g/uniform1500_1500-'
-    uniform_3g_paths = []
-
-    for scenario_num in range(0, 20):
-        n = str(scenario_num)
-        aligned_3g_paths.append(aligned_3g + n)
-        corridors_3g_paths.append(corridors_3g + n)
-        minima_3g_paths.append(minima_3g + n)
-        uniform_3g_paths.append(uniform_3g + n)
-
-    domain_paths.extend(aligned_3g_paths)
-    domain_paths.extend(corridors_3g_paths)
-    domain_paths.extend(minima_3g_paths)
-    domain_paths.extend(uniform_3g_paths)
-
-    configurations = cartesian_product(configurations, 'domainName',
-                                       [
-                                           'VACUUM_WORLD',
-                                       ])
-    configurations = cartesian_product(configurations, 'domainPath',
-                                       domain_paths)
-
-    return configurations
 
 
 def generate_grid_world():
@@ -216,58 +80,28 @@ def generate_grid_world():
     domain_paths = []
 
     # Build all domain paths
-    dao_base_path = 'input/vacuum/orz100d/orz100d.map_scen_'
-    dao_paths = []
-    minima1500_base_path = 'input/vacuum/minima1500/minima1500_1500-'
-    minima1500_paths = []
-    minima3000_base_path = 'input/vacuum/minima3k_300/minima3000_300-'
-    minima3000_paths = []
-    uniform1500_base_path = 'input/vacuum/uniform1500/uniform1500_1500-'
-    uniform1500_paths = []
-    uniform3000_base_path = 'input/vacuum/uniform3k_1500/gridworld'
-    uniform3000_paths = []
-    uniform40_base_path = 'input/vacuum/uniform40/'
-    uniform40_paths = []
-    tunnels38_base_path = 'input/vacuum/tunnels38/'
-    tunnels38_paths = []
-    for scenario_num in range(0, 10):  # large set 25
-        n = str(scenario_num)
-        dao_paths.append(dao_base_path + n)
-        minima1500_paths.append(minima1500_base_path + n + '.vw')
-        minima3000_paths.append(minima3000_base_path + n + '.vw')
-        uniform1500_paths.append(uniform1500_base_path + n + '.vw')
-        uniform3000_paths.append(uniform3000_base_path + n + '.gw')
-        uniform40_paths.append(uniform40_base_path + '1k1k/uniform1000_1000-'+ n)
-        uniform40_paths.append(uniform40_base_path + '1k2k/uniform1000_2000-'+ n)
-        uniform40_paths.append(uniform40_base_path + '1k4k/uniform1000_4000-'+ n)
-        uniform40_paths.append(uniform40_base_path + '1k8k/uniform1000_8000-'+ n)
-        
-        tunnels38_paths.append(tunnels38_base_path + '1k1k/tunnels1000_1000-'+ n + '.vw')
-        tunnels38_paths.append(tunnels38_base_path + '1k2k/tunnels1000_2000-'+ n + '.vw')
-        tunnels38_paths.append(tunnels38_base_path + '1k5k/tunnels1000_5000-'+ n + '.vw')
-        tunnels38_paths.append(tunnels38_base_path + '1k10k/tunnels1000_10000-'+ n + '.vw')
-        tunnels38_paths.append(tunnels38_base_path + '1k12k/tunnels1000_12000-'+ n + '.vw')
-        
-    for scenario_num in range(0, 40):  # large set 25
-        n = str(scenario_num)
-#         tunnels38_paths.append(tunnels38_base_path + '1k15k/tunnels1000_15000-'+ n + '.vw')
 
-#     domain_paths.extend(dao_paths)
-#     domain_paths.extend(minima1500_paths)
-#    domain_paths.extend(minima3000_paths)
-#     domain_paths.extend(uniform1500_paths)
-    domain_paths.extend(uniform3000_paths)
-#     domain_paths.extend(uniform40_paths)
-#    domain_paths.extend(tunnels38_paths)
+    # uniform 3-goals
+    uniform_3goal_base_path = 'input/vacuum/grd/uniform_3goals/uniform'
+    uniform_3goal_paths = []
+
+    for size in range(7, 12):
+        for scenario_num in range(0, 20):
+            uniform_3goal_paths.append(f'{uniform_3goal_base_path}{size}_{size}-{scenario_num}.vw')
+
+    domain_paths.extend(uniform_3goal_paths)
 
     configurations = cartesian_product(configurations, 'domainName',
                                        [
-#                                            'VACUUM_WORLD',
-#                                            'ORIENTATION_GRID',
                                            'GRID_WORLD'
                                        ])
     configurations = cartesian_product(configurations, 'domainPath',
                                        domain_paths)
+
+    # goal priors for all - 3 goals as list, so must make it a list of list
+    priors = [[0.33, 0.33, 0.34]]
+    configurations = cartesian_product(configurations, 'goalPriors',
+                                       priors)
 
     return configurations
 
@@ -292,8 +126,8 @@ def cartesian_product(base, key, values, filters=None):
 
 
 def distributed_execution(configurations, resource_dir=None):
-    from slack_notification import start_experiment_notification, \
-        end_experiment_notification
+    # from slack_notification import start_experiment_notification, \
+    #     end_experiment_notification
 
     # executor = create_remote_distlre_executor()
     executor = create_local_distlre_executor(6)
@@ -327,7 +161,7 @@ def distributed_execution(configurations, resource_dir=None):
 
         futures.append(future)
 
-    start_experiment_notification(experiment_count=len(configurations))
+    # start_experiment_notification(experiment_count=len(configurations))
     print('Experiments started')
     executor.execute_tasks()
 
@@ -335,7 +169,7 @@ def distributed_execution(configurations, resource_dir=None):
     progress_bar.close()
 
     print('Experiments finished')
-    end_experiment_notification()
+    # end_experiment_notification()
 
     results = construct_results(futures)
 
@@ -358,10 +192,11 @@ def construct_results(futures):
         # print(f'output: {result.output}')
 
         raw_output = result.output.splitlines()
-#         print('Output:')
-#         print('\n'.join(raw_output))
-#         print('Error:')
-#         print(result.error)
+        # print('Output:')
+        # print('\n'.join(raw_output))
+        if len(result.error) > 0:
+            print('Error:')
+            print(result.error)
         if '#' not in raw_output:
             results.append({
                 'configuration': future.configuration,
@@ -382,7 +217,7 @@ def construct_results(futures):
             })
             continue
 
-        print(raw_output[result_offset])
+        # print(raw_output[result_offset])
         output = json.loads(raw_output[result_offset])
         results.append(output)
     return results
@@ -508,16 +343,14 @@ def main():
             configuration['timeLimit'] = 5 * 90 * 1000 * 1000000
     else:
         # Generate new domain configurations
-#         configurations = generate_vacuum_world()
-#         configurations = generate_grid_world() # * 3
-        configurations = None
-        with open('resources/configuration/grd-trials.json') as trials_file:
-            configurations = json.load(trials_file)
+        configurations = generate_grid_world()
 
         label_algorithms(configurations)
         # configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
+    print(configurations[:5])
+    raise Exception("here")
     
     start_time = time.perf_counter()
     results = distributed_execution(configurations)

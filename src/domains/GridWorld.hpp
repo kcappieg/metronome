@@ -282,7 +282,9 @@ class GridWorld {
           "GridWorld unknown start or goal location. Start or goal location is "
           "not defined.");
     } else {
-      startLocation = tempStartState.value();
+      if (tempStartState.has_value()) {
+        startLocation = tempStartState.value();
+      }
       // If only 1 goal, set the singleGoal property
       if (goalLocations.size() == 1) {
         useSingleGoal = true;
@@ -373,6 +375,14 @@ class GridWorld {
 
   State getStartState() const { return startLocation; }
 
+  /**
+   * For lazy scene initialization
+   * @param startState
+   */
+  void setStartState(const State& startState) {
+    startLocation = startState;
+  }
+
   [[maybe_unused]] bool isStart(const State& state) const {
     return state.getX() == startLocation.getX() &&
            state.getY() == startLocation.getY();
@@ -434,6 +444,25 @@ class GridWorld {
    */
   void clearCurrentGoal() {
     useSingleGoal = false;
+  }
+
+  /**
+   * For lazy-initialization
+   * @param interventionStates
+   */
+  void addPossibleInterventions(const std::vector<State>& interventionStates) {
+    for (auto& state : interventionStates) {
+      possibleInterventions.insert({
+        state, Intervention(state, Intervention::Type::ADD)
+      });
+    }
+  }
+
+  /**
+   * For lazy initialization. Do not use in GRD algorithm!
+   */
+  void setObserverLocation(const State& observerLoc) {
+    observerLocation = observerLoc;
   }
 
   /**
