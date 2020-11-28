@@ -349,8 +349,6 @@ def main():
         # configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
-    print(configurations[:5])
-    raise Exception("here")
     
     start_time = time.perf_counter()
     results = distributed_execution(configurations)
