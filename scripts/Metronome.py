@@ -82,7 +82,7 @@ def generate_grid_world():
     # Build all domain paths
 
     # uniform 3-goals
-    uniform_3goal_base_path = 'input/vacuum/grd/uniform_3goals/uniform'
+    uniform_3goal_base_path = 'vacuum/grd/uniform_3goals/uniform'
     uniform_3goal_paths = []
 
     for size in range(7, 12):
@@ -142,14 +142,14 @@ def distributed_execution(configurations, resource_dir=None):
         executable = '/'.join([cwd, 'build/release/Metronome'])
         resources = resource_dir
         if (resources is None):
-            resources = '/'.join([cwd, 'resources/input/vacuum/'])
+            resources = '/'.join([cwd, 'resources/input/'])
 
         json_configuration = f'{json.dumps(configuration)}\n\n'
 
         metadata = str(json_configuration)
         command = ' '.join([executable, resources, metadata])
 
-        task = Task(command=command, meta=None, time_limit=90, memory_limit=10)
+        task = Task(command=command, meta=None, time_limit=600, memory_limit=10)
         task.input = json_configuration.encode()
 
         # print(task.command)
@@ -230,19 +230,19 @@ def create_local_distlre_executor(local_threads):
 
 
 def create_remote_distlre_executor(local_threads=None):
-    from slack_notification import start_experiment_notification, \
-        end_experiment_notification
+    # from slack_notification import start_experiment_notification, \
+    #     end_experiment_notification
 
     import getpass
     HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
-             [1, 2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15]]
+             [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
     print('\nExecuting configurations on the following ai servers: ')
     print(HOSTS)
 
     # I would recommend setting up public key auth for your ssh
     # password = getpass.getpass("Password to connect to [ai.cs.unh.edu]")
     password = None
-    remote_hosts = [RemoteHost(host, port=22, password=password) for host in
+    remote_hosts = [RemoteHost(host, 'echo 1', port=22, password=password) for host in
                     HOSTS]
 
     if local_threads:
@@ -346,9 +346,10 @@ def main():
         configurations = generate_grid_world()
 
         label_algorithms(configurations)
-        # configurations = configurations[:1]  # debug - keep only one config
+        configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
+    print(configurations)
     
     start_time = time.perf_counter()
     results = distributed_execution(configurations)
@@ -363,8 +364,6 @@ def main():
     for result in results:
         result.pop('actions', None)
         result.pop('systemProperties', None)
-
-    save_results(results, 'results/results_temp.json')
 
     save_results(results, file_name)
     print_summary(results)
