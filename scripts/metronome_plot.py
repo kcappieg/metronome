@@ -16,7 +16,8 @@ alg_map = {"A_STAR": "A*", "LSS_LRTA_STAR": "LSS-LRTA*", "SAFE_RTS": "SRTS",
            "S_ZERO": "S0", "SIMPLE_SAFE": "SS",
            "SINGLE_SAFE": "BEST_SAFE", "SAFE_RTS_TOP": "SRTS_TOP",
            "TIME_BOUNDED_A_STAR": "TBA*", "CES": "CES",
-           "ENVELOPE": "Envelope v0.5", "ES": "RES"}
+           "ENVELOPE": "Envelope v0.5", "ES": "RES",
+           "NAIVE_OPTIMAL_AGRD": "Optimal AGRD"}
 
 
 def flatten(experiment):
@@ -170,7 +171,7 @@ def prepare_data(paths, paths_to_base):
     return data
 
 
-def remove_unused_columns(data):
+def remove_unused_columns(data, additional_columns=[]):
     data.drop(['actions', 'commitmentType',
 #                "success",
                "timeLimit",
@@ -182,7 +183,7 @@ def remove_unused_columns(data):
                'domainSeed', 'averageVelocity', "proofSuccessful", "rawDomain",
                "anytimeMaxCount",
                "systemProperties", "towardTopNode", "numberOfProofs",
-               'terminationTimeEpsilon', 'backlogRatio', 'tbaOptimization'],
+               'terminationTimeEpsilon', 'backlogRatio', 'tbaOptimization'] + additional_columns,
               axis=1,
               inplace=True,
               errors='ignore')

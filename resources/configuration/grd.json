@@ -10,5 +10,5 @@
   "goalPriors": [0.33, 0.33, 0.34],
   "maxDepth": 1000,
   "domainName": "GRID_WORLD",
-  "domainPath": "vacuum/grd/uniform7x7_3goals/uniform7_7-0.vw"
+  "domainPath": "vacuum/grd/uniform_3goals/uniform7_7-0.vw"
 }
