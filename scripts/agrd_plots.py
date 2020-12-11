@@ -4,6 +4,7 @@ import json
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from pandas import DataFrame
 import seaborn as sns
 import statsmodels.stats.api as sms
@@ -63,11 +64,16 @@ def add_depth_upper_bound(data):
 
 
 def plot_runtime(data, title, file_name):
+    plot_log = True
+
     results = DataFrame(
         columns="depthUpperBound firstIterationRuntime algorithmName lbound rbound".split()
     )
     # rescale runtime to ms
     data['firstIterationRuntime'] = data['firstIterationRuntime'] / 1000000
+
+    if plot_log:
+        data['firstIterationRuntime'] = np.log(data['firstIterationRuntime'])
 
     # average runtime for all instances that share a depth bound
     for fields, depth_group in data.groupby(['algorithmName', 'depthUpperBound']):
@@ -100,10 +106,18 @@ def plot_runtime(data, title, file_name):
     plot = pivot.plot(color=palette, title=title, legend=False, yerr=errors,
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1)
-    plot.set_yscale('log')
 
-    plot.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
-    plot.get_yaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
+    if plot_log:
+        num_levels_below_zero = 1
+        num_levels_zero_above = 6
+
+        ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
+        ticks += [10 ** num for num in range(num_levels_zero_above)]
+
+        plot.set_yticks(np.log(ticks))
+        plot.set_yticklabels([num if num < 10000 else f'{num:.1g}' for num in ticks])
+
+    # plot.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
 
     plot.set_xlabel('Depth Upper Bound')
     plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')

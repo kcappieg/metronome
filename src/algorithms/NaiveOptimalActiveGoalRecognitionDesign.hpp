@@ -419,8 +419,8 @@ namespace metronome {
         // Set identity trial flag
         bool identityTrialStart = false;
         if (interventionBundle.intervention == domain->getIdentityIntervention()) {
-          identityTrial = true;
-          identityTrialStart = true;
+//          identityTrial = true;
+//          identityTrialStart = true;
         }
 
         std::optional<Patch> optionalDomainPatch =

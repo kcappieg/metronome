@@ -14,10 +14,18 @@ endif()
 
 set(CXX clang++)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+
+option(PROFILE "Compile with gnu Profiling Enabled (Linux build only)" OFF)
+
 if (WIN32 AND NOT MINGW)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall /bigobj /std:c++17")
 else()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -pedantic -Wextra")
+
+	if(PROFILE)
+		# add profiling flag
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
+	endif()
 endif(WIN32 AND NOT MINGW)
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  ${CMAKE_CXX_FLAGS} -O3")

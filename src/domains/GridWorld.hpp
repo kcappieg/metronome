@@ -250,7 +250,7 @@ class GridWorld {
               Intervention(State(currentWidth, currentHeight), Intervention::Type::ADD)
             });
             break;
-          case 'o':
+          case 'O':
             observerLocation = State(currentWidth, currentHeight);
             break;
           default: // its an open cell nothing needs to be done
@@ -590,6 +590,8 @@ class GridWorld {
       for (unsigned int j = 0; j < width; ++j) {
         if (startLocation.getX() == j && startLocation.getY() == i) {
           display << '@';
+        } else if (observerLocation.has_value() and observerLocation->getX() == j && observerLocation->getY() == i) {
+          display << 'o';
         } else if (goalLocations.count({j, i}) > 0) {
           display << '*';
         } else if (isObstacle(State(j, i))) {
