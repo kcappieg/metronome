@@ -95,6 +95,10 @@ class GridMap : public GridWorld {
     return interventions;
   }
 
+  void visualize(std::ostream& display, std::optional<State> state = {}) const {
+    GridWorld::visualize(display, state);
+  }
+
  private:
   State ptStringToState(const std::string& ptString) {
     auto ptStrings = split(ptString.substr(1, ptString.size() - 1), ',');

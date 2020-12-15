@@ -377,8 +377,9 @@ namespace metronome {
       }
 
       InterventionTrialResult trialResult{0.0, {}, {}};
-      // cache g for re-computing optimal plans
+      // cache g and goals for re-computing optimal plans
       Cost subjectCurrentG = subjectCurrentStateNode->g;
+      auto subjectCurrentGoalsToPlanCount = subjectCurrentStateNode->goalsToPlanCount;
 
       bool depthLimitReached = false;
       if (!identityTrial && (depth / 2) + 1 > maxDepth) {
@@ -467,8 +468,9 @@ namespace metronome {
           // when intervention deemed invalid, reverse and continue
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
-            // reset g for recomputing optimal plans
+            // reset g and goals to plan count for recomputing optimal plans
             subjectCurrentStateNode->g = subjectCurrentG;
+            subjectCurrentStateNode->goalsToPlanCount = subjectCurrentGoalsToPlanCount;
             recomputeOptimalInfo(subjectCurrentStateNode->state);
             continue;
           }
@@ -545,7 +547,7 @@ namespace metronome {
         double probability = actionResults.probabilityOfAction;
 
         double actionScore = 0.0;
-        bool noOp = false;
+        [[maybe_unused]] bool noOp = false;
         // this means that the state is a goal state
         if (successor->state == simulatedStateNode->state) {
           noOp = true;

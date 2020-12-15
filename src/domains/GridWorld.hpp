@@ -251,6 +251,7 @@ class GridWorld {
             });
             break;
           case 'O':
+          case 'o':
             observerLocation = State(currentWidth, currentHeight);
             break;
           default: // its an open cell nothing needs to be done
@@ -585,10 +586,11 @@ class GridWorld {
       // ignore identity
   }
 
-  void visualize(std::ostream& display) const {
+  void visualize(std::ostream& display, std::optional<State> state = {}) const {
+    auto agentState = state.has_value() ? state.value() : startLocation;
     for (unsigned int i = 0; i < height; ++i) {
       for (unsigned int j = 0; j < width; ++j) {
-        if (startLocation.getX() == j && startLocation.getY() == i) {
+        if (agentState.getX() == j && agentState.getY() == i) {
           display << '@';
         } else if (observerLocation.has_value() and observerLocation->getX() == j && observerLocation->getY() == i) {
           display << 'o';

@@ -307,8 +307,8 @@ class VacuumWorld {
 
   /*Validating the agent can visit the state*/
   bool isLegalLocation(const Location& location) const {
-    return location.getX() < width && location.getX() >= 0 &&
-           location.getY() < height && location.getY() >= 0 &&
+    return location.getX() < width &&
+           location.getY() < height &&
            !isObstacle(location);
   }
 
@@ -422,10 +422,11 @@ class VacuumWorld {
     return successors;
   }
 
-  void visualize(std::ostream& display) const {
+  void visualize(std::ostream& display, std::optional<State> state = {}) const {
+    auto agentState = state.has_value() ? state.value() : startState;
     for (unsigned int i = 0; i < height; ++i) {
       for (unsigned int j = 0; j < width; ++j) {
-        if (startState.getX() == j && startState.getY() == i) {
+        if (agentState.getX() == j && agentState.getY() == i) {
           display << '@';
         } else if (isObstacle(Location(j, i))) {
           display << '#';

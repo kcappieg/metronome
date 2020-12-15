@@ -107,6 +107,10 @@ include_directories(src)
 # Comment the following line out to disable Gephi (Stream Graph HTTP) visualization
 # add_definitions(-DSTREAM_GRAPH)
 
+# Comment following to disable playback logging
+# Currently only built into GRD experiments
+add_definitions(-DENABLE_PLAYBACK)
+
 # Select the possible algorithms.
 add_definitions(-DENABLE_A_STAR)
 #add_definitions(-DENABLE_LSS_LRTA_STAR)
@@ -127,7 +131,7 @@ add_definitions(-DENABLE_VACUUM_WORLD)
 #add_definitions(-DENABLE_TRAFFIC_WORLD)
 
 # Disable logger
-add_definitions(-DELPP_DISABLE_LOGS)
+#add_definitions(-DELPP_DISABLE_LOGS)
 
 if (MINGW OR WIN32)
     target_link_libraries(Metronome ws2_32)

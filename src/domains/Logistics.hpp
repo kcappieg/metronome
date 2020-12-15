@@ -679,6 +679,10 @@ class Logistics {
     // ignore identity
   }
 
+  void visualize(std::ostream&, std::optional<State> = {}) const {
+    throw MetronomeException("Not implemented");
+  }
+
  private:
   // Private utility functions
 

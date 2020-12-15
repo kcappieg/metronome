@@ -10,11 +10,13 @@
 #include "easylogging++.h"
 #include "termination/TimeTerminationChecker.hpp"
 #include "algorithms/GoalRecognitionDesignPlanner.hpp"
+#include "utils/File.hpp"
 
 #include <cmath>
 #include <utility>
 #include <random>
 #include <deque>
+#include <fstream>
 
 namespace metronome{
 
@@ -70,6 +72,18 @@ public:
     const State subjectGoal = getSubjectGoal(configuration, domain);
     LOG(INFO) << "Subject goal: " << subjectGoal;
 
+#ifdef ENABLE_PLAYBACK
+    LOG(INFO) << "Playback enabled. Initializing write stream";
+    std::string playbackPath{ "./results/playback/" +
+                             (configuration.hasMember(PLAYBACK_FILENAME) ? configuration.getString(PLAYBACK_FILENAME)
+                                                                         : "playback.grid-viz")
+    };
+
+    std::fstream playbackOutputStream{playbackPath, std::fstream::out};
+
+    domain.visualize(playbackOutputStream);
+#endif
+
     // Implement loop - get intervention, then action. Repeat.
     while (!domain.isGoal(subjectState, subjectGoal)) {
       // clear goal for Observer Intervention
@@ -96,6 +110,10 @@ public:
       const auto patch = validateIntervention(domain, interventionBundle.intervention, subjectState);
       grdExecutionCost += interventionBundle.interventionCost;
 
+#ifdef ENABLE_PLAYBACK
+      domain.visualize(playbackOutputStream, subjectState);
+#endif
+
 
       // Subject Iteration
       // First check to see if anything has changed (or we've run out of actions). If not, don't invoke planner
@@ -114,6 +132,10 @@ public:
       const ActionBundle actionBundle = cachedActions.front();
       subjectState = validateAction(domain, subjectState, actionBundle.action);
       subjectExecutionCost += actionBundle.actionDuration;
+
+#ifdef ENABLE_PLAYBACK
+      domain.visualize(playbackOutputStream, subjectState);
+#endif
 
       // construct pair
       turns.emplace_back(interventionBundle.intervention, actionBundle.action);
@@ -135,6 +157,11 @@ public:
         }
       }
     }
+
+#ifdef ENABLE_PLAYBACK
+    // close playback outstream
+    playbackOutputStream.close();
+#endif
 
     std::vector<std::string> turnList;
     for (auto& turn : turns) {

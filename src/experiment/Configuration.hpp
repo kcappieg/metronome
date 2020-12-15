@@ -15,6 +15,7 @@ static const std::string RAW_DOMAIN{"rawDomain"};
 static const std::string DOMAIN_NAME{"domainName"};
 static const std::string DOMAIN_PATH{"domainPath"};
 static const std::string SCENE_PATH{"scenePath"};
+static const std::string PLAYBACK_FILENAME{"playbackFilename"};
 static const std::string DOMAIN_INSTANCE{"domainInstanceName"};
 static const std::string ALGORITHM_NAME{"algorithmName"};
 static const std::string TERMINATION_CHECKER_TYPE{"terminationType"};
