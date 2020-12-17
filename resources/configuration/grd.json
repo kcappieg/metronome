@@ -1,15 +1,15 @@
 {
   "algorithmName": "NAIVE_OPTIMAL_AGRD",
-  "actionDuration": 10,
-  "interventionCost": 10,
+  "actionDuration": 1,
+  "interventionCost": 1,
   "terminationType": "EXPANSION",
   "subjectAlgorithm": "NAIVE_DYNAMIC",
   "timeLimit": 300000000000,
   "heuristicMultiplier": 1.0,
   "weight": 1.0,
-  "goalPriors": [0.33, 0.33, 0.34],
+  "goalPriors": [0.25, 0.25, 0.25, 0.25],
   "maxDepth": 1000,
   "domainName": "GRID_WORLD",
-  "domainPath": "vacuum/grd/sequence.vw",
-  "playbackFilename": "sequence.grid-viz"
+  "domainPath": "vacuum/grd/think-ahead.vw",
+  "playbackFilename": "think-ahead.grid-viz"
 }

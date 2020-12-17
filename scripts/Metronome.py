@@ -106,6 +106,15 @@ def generate_grid_world():
     return configurations
 
 
+def config_from_file(filename):
+    with open(filename) as file:
+        config = json.load(file)
+        if type(config) is not list:
+            config = [config]
+
+        return config
+
+
 def cartesian_product(base, key, values, filters=None):
     new_base = []
     if filters is None:
@@ -343,7 +352,8 @@ def main():
             configuration['timeLimit'] = 5 * 90 * 1000 * 1000000
     else:
         # Generate new domain configurations
-        configurations = generate_grid_world()
+        # configurations = generate_grid_world()
+        configurations = config_from_file('resources/configuration/grd.json')
 
         label_algorithms(configurations)
         configurations = configurations[:1]  # debug - keep only one config
