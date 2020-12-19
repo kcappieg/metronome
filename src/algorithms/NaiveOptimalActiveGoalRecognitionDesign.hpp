@@ -493,7 +493,10 @@ namespace metronome {
         }
 #endif
 
-        if (actionTrialResult.score > trialResult.score) {
+        if (actionTrialResult.score > trialResult.score or
+            // prefer identity interventions when there is a tie
+            (trialResult.score - actionTrialResult.score < std::numeric_limits<double>::epsilon()
+             and interventionBundle.intervention == domain->getIdentityIntervention())) {
           trialResult.score = actionTrialResult.score;
           trialResult.bestIntervention.emplace(interventionBundle);
           trialResult.potentialSubjectActionOutcomes =
