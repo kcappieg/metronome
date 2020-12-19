@@ -22,7 +22,8 @@ GREEN = (0, 255, 0)
 LINE_DELIMETER = '\n'
 
 CELL_SIZE = 30
-AGENT_SIZE = int(CELL_SIZE * 0.8)
+OBSERVER_SIZE = int(CELL_SIZE * 0.8)
+AGENT_SIZE = int(CELL_SIZE * 0.6)
 
 MIN_SCREEN_SIZE = (500, 500)
 SCREEN_PADDING = 15
@@ -64,6 +65,7 @@ class Visualizer:
         first_frame = self._read_frame()
         if first_frame['eof']:
             raise Exception('Empty grid-viz file')
+        self._last_frame = first_frame
 
         self._goals = first_frame['goals']
 
@@ -140,6 +142,7 @@ class Visualizer:
             self._print('Finished reading file')
             self._render_finished_msg()
             return False
+        self._last_frame = frame
 
         self._render_frame(frame)
         self._show_grid()
@@ -169,12 +172,12 @@ class Visualizer:
         draw.rect(goal, GOAL_COLOR, full_cell_rect)
 
         agent_rect = Rect(0, 0, AGENT_SIZE, AGENT_SIZE)
-
         agent = Surface((AGENT_SIZE, AGENT_SIZE))
         draw.rect(agent, AGENT_COLOR, agent_rect)
 
-        observer = Surface((AGENT_SIZE, AGENT_SIZE))
-        draw.rect(observer, OBSERVER_COLOR, agent_rect)
+        observer_rect = Rect(0, 0, OBSERVER_SIZE, OBSERVER_SIZE)
+        observer = Surface((OBSERVER_SIZE, OBSERVER_SIZE))
+        draw.rect(observer, OBSERVER_COLOR, observer_rect)
 
         self._obstacle = obstacle
         self._goal = goal
@@ -200,6 +203,9 @@ class Visualizer:
         agent = None
         observer = None
 
+        agent_offset = (CELL_SIZE - AGENT_SIZE) / 2
+        observer_offset = (CELL_SIZE - OBSERVER_SIZE) / 2
+
         width = -1
 
         rows = 0
@@ -211,8 +217,12 @@ class Visualizer:
 
                 left, top = (CELL_SIZE * column, CELL_SIZE * rows)
                 agent_left, agent_top = (
-                    left + (CELL_SIZE - AGENT_SIZE) / 2,
-                    top + (CELL_SIZE - AGENT_SIZE) / 2,
+                    left + agent_offset,
+                    top + agent_offset,
+                )
+                observer_left, observer_top = (
+                    left + observer_offset,
+                    top + observer_offset,
                 )
 
                 if char == '#':
@@ -222,7 +232,7 @@ class Visualizer:
                 elif char == '@':
                     agent = (agent_left, agent_top)
                 elif char == 'O' or char == 'o':
-                    observer = (agent_left, agent_top)
+                    observer = (observer_left, observer_top)
 
                 column += 1
 
@@ -234,6 +244,11 @@ class Visualizer:
 
             rows += 1
             line = self._source_file.readline()
+
+        # if observer is obscured by agent, assume they occupy the same space
+        if observer is None and self._last_frame is not None and self._last_frame['observer'] is not None:
+            observer = (self._last_frame['agent'][0] - agent_offset + observer_offset,
+                        self._last_frame['agent'][1] - agent_offset + observer_offset)
 
         return {
             'eof': False,
