@@ -5,7 +5,7 @@ import sys
 import argparse
 import numpy as np
 import rand_seed
-from shutil import copyfile
+from filter_domains import filter_domains
 
 __author__ = 'Kevin C. Gall'
 
@@ -67,7 +67,7 @@ class SingleObstacleStrategy:
     def get_observer_start(self):
         obs_start = (1, 1)
         while obs_start == (1, 1):
-            obs_start = (np.random.randint(0, self.width-1), np.random.randint(0, self.height-1))
+            obs_start = (np.random.randint(0, self.width), np.random.randint(0, self.height))
 
         self._observer_start = obs_start
         return obs_start
@@ -297,36 +297,6 @@ class TunnelsStrategy:
         self.claimed_tunnel_locations = set()
 
 
-
-def generate_filter_configs(domains, useVacuum):
-    config_list = []
-
-    domainName = 'GRID_WORLD'
-    if useVacuum:
-        domainName = 'VACUUM_WORLD'
-
-    for domain in domains:
-        config = dict()
-        config['algorithmName'] = 'A_STAR'
-        config['actionDuration'] = 1
-        config['domainName'] = domainName
-        config['terminationType'] = 'EXPANSION'
-        config['lookaheadType'] = 'DYNAMIC'
-        config['commitmentStrategy'] = 'SINGLE'
-        config['heuristicMultiplier'] = 1.0
-        # strip leading . char from domain
-        config['domainPath'] = domain[1:]
-
-#        if not useVacuum:
-#            config2 = config.copy()
-#            config2['domainName'] = 'VACUUM_WORLD'
-#            config_list.append(config2)
-
-        config_list.append(config)
-
-    return config_list
-
-
 def main(args):
     height = args.height
     width = args.width
@@ -445,41 +415,12 @@ def main(args):
         aFile.close()
 
     if args.filter:
-        filter_domains(generated_domains, base_domain_name, goals > 1, outPath)
+        domain_type = 'VACUUM_WORLD' if goals > 1 else 'GRID_WORLD'
+        filter_domains(generated_domains, base_domain_name, domain_type, outPath)
 
 
 def get_base_domain_name(strategy, width, height):
     return strategy + str(height) + '_' + str(width) + '-'
-
-
-def filter_domains(generated_domains, base_domain_name, is_vacuum, out_path='./gridworld'):
-    this_cwd = os.getcwd()
-
-    success_index = 0
-
-    filtered_dir = os.path.join(out_path, 'filtered')
-    if not os.path.exists(filtered_dir):
-        os.makedirs(filtered_dir)
-    configs = generate_filter_configs(generated_domains, is_vacuum)
-
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-    from Metronome import distributed_execution
-
-    print('Begin filtering of generated domains')
-
-    os.chdir('../..')
-    results = distributed_execution(configs, this_cwd)
-    os.chdir(this_cwd)
-
-    for result in results:
-        if (result['success']):
-            print(f'Domain {result["configuration"]["domainPath"]} is solvable')
-
-            copyfile('.' + result['configuration']['domainPath'], os.path.join(filtered_dir, base_domain_name + str(success_index) + '.vw'))
-            success_index += 1
-        else:
-            print(result['errorMessage'])
-            print(f'Domain {result["configuration"]["domainPath"]} was not successfully solved')
 
 
 if __name__ == '__main__':

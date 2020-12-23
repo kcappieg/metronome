@@ -24,6 +24,7 @@
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
 #include "utils/TimeMeasurement.hpp"
+#include "experiment/termination/TimeTerminationChecker.hpp"
 
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 0
@@ -138,6 +139,10 @@ namespace metronome {
       }
 
       return {};
+    }
+
+    void setTerminationChecker(TimeTerminationChecker& experimentTerminationChecker) {
+      terminationChecker = experimentTerminationChecker;
     }
 
   private:
@@ -376,10 +381,12 @@ namespace metronome {
         return {cStar - g, {}, {}};
       }
 
-      InterventionTrialResult trialResult{0.0, {}, {}};
-      // cache g and goals for re-computing optimal plans
-      Cost subjectCurrentG = subjectCurrentStateNode->g;
-      auto subjectCurrentGoalsToPlanCount = subjectCurrentStateNode->goalsToPlanCount;
+      // only check every 200 nodes of the DFS
+      if(terminationChecker.has_value() && ++timeoutCounter % 1000 == 0) {
+        if (terminationChecker->reachedTermination()) {
+          throw MetronomeException("Timeout!");
+        }
+      }
 
       bool depthLimitReached = false;
       if (!identityTrial && (depth / 2) + 1 > maxDepth) {
@@ -387,6 +394,11 @@ namespace metronome {
         identityTrial = true;
       }
       depth++;
+
+      InterventionTrialResult trialResult{0.0, {}, {}};
+      // cache g and goals for re-computing optimal plans
+      Cost subjectCurrentG = subjectCurrentStateNode->g;
+      auto subjectCurrentGoalsToPlanCount = subjectCurrentStateNode->goalsToPlanCount;
 
       std::vector<InterventionBundle<Domain>> interventions;
       if (identityTrial) {
@@ -442,7 +454,7 @@ namespace metronome {
           bool invalidIntervention = false;
           try {
             recomputeOptimalInfo(simulatedStateNode->state);
-          } catch (MetronomeException mex) {
+          } catch (MetronomeException& mex) {
             // made a goal unreachable
             invalidIntervention = true;
           }
@@ -527,14 +539,22 @@ namespace metronome {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
-        double g = static_cast<double>(simulatedStateNode->g);
+        auto g = static_cast<double>(simulatedStateNode->g);
         if (goalsToOptimalCost.count(goalState) == 0) {
           throw MetronomeException("Bug in goal plan count");
         }
-        double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
+        auto cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
         // reaction time
         return {cStar - g, {}};
       }
+
+      // only check every 200 nodes of the DFS
+      if(terminationChecker.has_value() && ++timeoutCounter % 1000 == 0) {
+        if (terminationChecker->reachedTermination()) {
+          throw MetronomeException("Timeout!");
+        }
+      }
+
       depth++;
 
       ActionTrialResult trialResult {
@@ -833,7 +853,10 @@ namespace metronome {
     ObjectPool<Node, Memory::NODE_LIMIT> nodePool;
     std::unordered_map<State, double, StateHash> goalsToPriors;
     std::optional<State> rootState;
-    uint32_t maxDepth = 0;
+    uint32_t maxDepth{0};
+    // check for timeouts
+    std::optional<TimeTerminationChecker> terminationChecker{};
+    uint64_t timeoutCounter{0};
 
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};

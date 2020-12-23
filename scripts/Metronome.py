@@ -12,13 +12,15 @@ from distlre.distlre import DistLRE, Task, RemoteHost
 __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 
+time_limit_seconds = 10 * 60
+
 def generate_base_configuration():
     # refactored for Active Goal Recognition
 
     # required configuration parameters
     algorithms_to_run = ['NAIVE_OPTIMAL_AGRD']
     lookahead_type = ['DYNAMIC']
-    time_limit = [10 * 60 * 1000000000] # min as nanoseconds
+    time_limit = [time_limit_seconds * 1000000000]  # as nanoseconds
     action_durations = [1]  # Use this for A*
 
     termination_types = ['EXPANSION']
@@ -158,7 +160,7 @@ def distributed_execution(configurations, resource_dir=None):
         metadata = str(json_configuration)
         command = ' '.join([executable, resources, metadata])
 
-        task = Task(command=command, meta=None, time_limit=600, memory_limit=10)
+        task = Task(command=command, meta=None, time_limit=time_limit_seconds, memory_limit=10)
         task.input = json_configuration.encode()
 
         # print(task.command)
@@ -349,7 +351,7 @@ def main():
         configurations = extract_configurations_from_failed_results(old_results)
         
         for configuration in configurations:
-            configuration['timeLimit'] = 5 * 90 * 1000 * 1000000
+            configuration['timeLimit'] = 5 * 60 * 1000000000
     else:
         # Generate new domain configurations
         # configurations = generate_grid_world()

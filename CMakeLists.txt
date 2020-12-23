@@ -76,7 +76,10 @@ set(SOURCE_FILES
 		src/algorithms/TrivialGrdPlanner.hpp
 		src/algorithms/DynamicPlanner.hpp
 		src/algorithms/NaiveDynamicAStar.hpp
-		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp src/domains/KeyGrid.hpp src/domains/GridMap.hpp)
+		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp
+		src/domains/KeyGrid.hpp
+		src/domains/GridMap.hpp
+		src/utils/Meta.hpp)
 
 set(TEST_FILES
         test/test.cpp
@@ -109,7 +112,7 @@ include_directories(src)
 
 # Comment following to disable playback logging
 # Currently only built into GRD experiments
-add_definitions(-DENABLE_PLAYBACK)
+#add_definitions(-DENABLE_PLAYBACK)
 
 # Select the possible algorithms.
 add_definitions(-DENABLE_A_STAR)

@@ -11,6 +11,7 @@
 #include "termination/TimeTerminationChecker.hpp"
 #include "algorithms/GoalRecognitionDesignPlanner.hpp"
 #include "utils/File.hpp"
+#include "utils/Meta.hpp"
 
 #include <cmath>
 #include <utility>
@@ -19,6 +20,13 @@
 #include <fstream>
 
 namespace metronome{
+
+// SFINAE Functions - let all domains compile
+
+/** Having fun with macros, don't judge me */
+DEFINE_METHOD_CALL_IF_AVAILABLE(visualize, visualize)
+DEFINE_METHOD_CALL_IF_AVAILABLE(giveTerminationChecker, setTerminationChecker)
+
 
 template <typename Domain, typename GrdPlanner, typename SubjectPlanner>
 class GrdExperiment : public Experiment<Domain, GrdPlanner> {
@@ -81,11 +89,19 @@ public:
 
     std::fstream playbackOutputStream{playbackPath, std::fstream::out};
 
-    domain.visualize(playbackOutputStream);
+    visualize(domain, playbackOutputStream);
 #endif
+
+    // if planner accepts termination checker, give it
+    giveTerminationChecker(grdPlanner, experimentTimeLimit.value());
 
     // Implement loop - get intervention, then action. Repeat.
     while (!domain.isGoal(subjectState, subjectGoal)) {
+      if (experimentTimeLimit.has_value() &&
+          experimentTimeLimit.value().reachedTermination()) {
+        throw MetronomeException("Timeout!");
+      }
+
       // clear goal for Observer Intervention
       domain.clearCurrentGoal();
       turnCount++;
@@ -111,7 +127,7 @@ public:
       grdExecutionCost += interventionBundle.interventionCost;
 
 #ifdef ENABLE_PLAYBACK
-      domain.visualize(playbackOutputStream, subjectState);
+      visualize(domain, playbackOutputStream, subjectState);
 #endif
 
 
@@ -134,7 +150,7 @@ public:
       subjectExecutionCost += actionBundle.actionDuration;
 
 #ifdef ENABLE_PLAYBACK
-      domain.visualize(playbackOutputStream, subjectState);
+      visualize(domain, playbackOutputStream, subjectState);
 #endif
 
       // construct pair
