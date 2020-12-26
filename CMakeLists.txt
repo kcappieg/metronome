@@ -134,7 +134,7 @@ add_definitions(-DENABLE_VACUUM_WORLD)
 #add_definitions(-DENABLE_TRAFFIC_WORLD)
 
 # Disable logger
-#add_definitions(-DELPP_DISABLE_LOGS)
+add_definitions(-DELPP_DISABLE_LOGS)
 
 if (MINGW OR WIN32)
     target_link_libraries(Metronome ws2_32)
