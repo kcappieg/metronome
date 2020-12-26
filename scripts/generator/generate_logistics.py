@@ -5,6 +5,7 @@ import argparse
 from math import floor, ceil
 import numpy as np
 from collections import deque
+from rand_seed import next_seed
 
 __author__ = 'Kevin C. Gall'
 
@@ -52,6 +53,8 @@ def main(args):
     file_name += f'_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
 
     for i in range(total):
+        np.random.seed(next_seed())
+
         # create network topology
         instance = f'Locations:{locations}\n'
         instance += network_builder.generate_network() + '\n'
@@ -96,9 +99,9 @@ class Network:
         self._max_connections = floor(density * pc)
 
     def generate_base_network(self):
-        '''Generate the base network
+        """Generate the base network
         Must return set of tuples for duplicate detection
-        Responsible for ensuring base network connects all nodes'''
+        Responsible for ensuring base network connects all nodes"""
         raise Exception('Must be implemented by child class')
 
     def generate_network(self):
@@ -136,9 +139,9 @@ class ClusterNetwork(Network):
         self._clusters = clusters
 
     def generate_base_network(self):
-        '''Creates random clusters of nodes.
+        """Creates random clusters of nodes.
         Ensures there is a path through each cluster so
-        that every node is connected to every other node'''
+        that every node is connected to every other node"""
         # using choice like a shuffle, just not in place
         shuffled_list = np.random.choice(self._location_list, self._num_locations, replace=False)
 
@@ -179,12 +182,12 @@ class ClusterNetwork(Network):
 
 class CycleNetwork(Network):
     def generate_base_network(self):
-        '''Creates a random-path cycle through the nodes'''
+        """Creates a random-path cycle through the nodes"""
         shuffled_list = np.random.choice(self._location_list, self._num_locations, replace=False)
 
         network = set()
         for i in range(self._num_locations):
-            next_loc = (i + 1) if i+1 < self._num_locations else 0
+            next_loc = (i + 1) if i + 1 < self._num_locations else 0
 
             edge = (
                 shuffled_list[i],
@@ -195,6 +198,7 @@ class CycleNetwork(Network):
             network.add(alt)
 
         return network
+
 
 class GeometricNetwork:
     def __init__(self, locations, connection_distance):
@@ -210,7 +214,7 @@ class GeometricNetwork:
 
         edge_lookup = [list() for _ in range(self._num_locations)]
         for i in range(self._num_locations - 1):
-            for j in range(i+1, self._num_locations):
+            for j in range(i + 1, self._num_locations):
                 dist_sq = euclidean_dist_sq(locations[i], locations[j])
                 if dist_sq <= self._max_dist_sq:
                     edge = (i, j, dist_sq)
@@ -258,9 +262,6 @@ class GeometricNetwork:
         return network_desc
 
 
-        return connected_network
-
-
 def euclidean_dist_sq(pt1, pt2):
     '''Helper - Euclidean dist between points, squared'''
     return ((pt1[0] - pt2[0]) ** 2) + ((pt1[1] - pt2[1]) ** 2)
@@ -278,8 +279,8 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--density', help='Max density of network. Not guaranteed, simply a guide to the '
                                                 'generator. If topology is geometric, this value is ignored.',
                         type=float, default=0)
-    parser.add_argument('--topology', help='Cluster creates groups with central nodes. Cycle distributes connections'
-                                           'more evenly throughout the network. Geometric is based on random'
+    parser.add_argument('--topology', help='Cluster creates groups with central nodes. Cycle distributes connections '
+                                           'more evenly throughout the network. Geometric is based on random '
                                            'sampling within unit square',
                         choices=['cluster', 'cycle', 'geometric'], default='geometric')
     # TODO: add option for cost range. Just using 1 - 5 for now.

@@ -24,8 +24,6 @@ def generate_goals(goals, width, height, start, observer_start = None):
     else:
         goal_set.add((width - 2, height - 2))
 
-    print(goal_set)
-
     return goal_set
 
 

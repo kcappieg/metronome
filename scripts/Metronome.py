@@ -11,8 +11,8 @@ from distlre.distlre import DistLRE, Task, RemoteHost
 
 __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
-
 time_limit_seconds = 10 * 60
+
 
 def generate_base_configuration():
     # refactored for Active Goal Recognition
@@ -76,34 +76,66 @@ def generate_base_configuration():
     return compiled_configurations
 
 
-def generate_grid_world():
-    configurations = generate_base_configuration()
+def generate_agrd_configs():
+    base_configs = generate_base_configuration()
 
-    domain_paths = []
+    paths_by_goal_count = {
+        2: [],
+        3: [],
+        4: []
+    }
+    priors_by_goal_count = {
+        2: [0.5, 0.5],
+        3: [0.33, 0.33, 0.34],
+        4: [0.25, 0.25, 0.25, 0.25]
+    }
 
     # Build all domain paths
+    # uniform
+    for goal_count in range(2, 5):
+        base_path = f'vacuum/grd/uniform_{goal_count}goals/uniform'
+        for size in range(7, 12):
+            for scenario_num in range(30):
+                paths_by_goal_count[goal_count].append(f'{base_path}{size}_{size}-{scenario_num}.vw')
 
-    # uniform 3-goals
-    uniform_3goal_base_path = 'vacuum/grd/uniform_3goals/uniform'
-    uniform_3goal_paths = []
+    # rooms
+    for goal_count in range(2, 5):
+        base_path = f'vacuum/grd/rooms_{goal_count}goals/64room_00'
+        for map_num in range(10):
+            for scenario_num in range(10):
+                paths_by_goal_count[goal_count].append(f'{base_path}{map_num}-scn{scenario_num}.vw')
 
-    for size in range(7, 12):
-        for scenario_num in range(0, 20):
-            uniform_3goal_paths.append(f'{uniform_3goal_base_path}{size}_{size}-{scenario_num}.vw')
+    configurations = []
+    gw_configs = cartesian_product(base_configs, 'domainName',
+                                   ['GRID_WORLD'])
+    for goal_count in range(2, 5):
+        configs_with_priors = cartesian_product(gw_configs, 'goalPriors',
+                                                [priors_by_goal_count[goal_count]])
+        configurations += cartesian_product(configs_with_priors, 'domainPath',
+                                            paths_by_goal_count[goal_count])
 
-    domain_paths.extend(uniform_3goal_paths)
+    # reset
+    # TODO: split into 2 functions here
+    paths_by_goal_count = {
+        2: [],
+        3: [],
+        4: []
+    }
 
-    configurations = cartesian_product(configurations, 'domainName',
-                                       [
-                                           'GRID_WORLD'
-                                       ])
-    configurations = cartesian_product(configurations, 'domainPath',
-                                       domain_paths)
+    # logistics
+    for goal_count in range(2, 5):
+        base_path10 = f'vacuum/grd/logistics_{goal_count}goals/geometric_0.4dist_{goal_count}goal_10loc_3pkg_1trk_'
+        base_path15 = f'vacuum/grd/logistics_{goal_count}goals/geometric_0.4dist_{goal_count}goal_15loc_3pkg_1trk_'
+        for scenario_num in range(15):
+            paths_by_goal_count[goal_count].append(f'{base_path10}{scenario_num}.logistics')
+            paths_by_goal_count[goal_count].append(f'{base_path15}{scenario_num}.logistics')
 
-    # goal priors for all - 3 goals as list, so must make it a list of list
-    priors = [[0.33, 0.33, 0.34]]
-    configurations = cartesian_product(configurations, 'goalPriors',
-                                       priors)
+    log_configs = cartesian_product(base_configs, 'domainName', ['LOGISTICS'])
+    for goal_count in range(2, 5):
+        configs_with_priors = cartesian_product(log_configs, 'goalPriors',
+                                                [priors_by_goal_count[goal_count]])
+        configurations += cartesian_product(configs_with_priors, 'domainPath',
+                                            paths_by_goal_count[goal_count])
 
     return configurations
 
@@ -140,8 +172,8 @@ def distributed_execution(configurations, resource_dir=None):
     # from slack_notification import start_experiment_notification, \
     #     end_experiment_notification
 
-    # executor = create_remote_distlre_executor()
-    executor = create_local_distlre_executor(6)
+    executor = create_remote_distlre_executor()
+    # executor = create_local_distlre_executor(6)
 
     futures = []
     progress_bar = tqdm(total=len(configurations), smoothing=0.1)
@@ -336,7 +368,7 @@ def main():
     print(os.getcwd())
     os.chdir('..')
 
-#     recycle = True
+    #     recycle = True
     recycle = False
 
     if not build_metronome():
@@ -349,20 +381,20 @@ def main():
         # Load previous configurations
         old_results = read_results_from_file(file_name)
         configurations = extract_configurations_from_failed_results(old_results)
-        
+
         for configuration in configurations:
             configuration['timeLimit'] = 5 * 60 * 1000000000
     else:
         # Generate new domain configurations
-        # configurations = generate_grid_world()
-        configurations = config_from_file('resources/configuration/grd.json')
+        configurations = generate_agrd_configs()
+        # configurations = config_from_file('resources/configuration/grd.json')
 
         label_algorithms(configurations)
         configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
     print(configurations)
-    
+
     start_time = time.perf_counter()
     results = distributed_execution(configurations)
     end_time = time.perf_counter()
