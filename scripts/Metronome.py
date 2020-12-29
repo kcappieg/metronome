@@ -11,7 +11,12 @@ from distlre.distlre import DistLRE, Task, RemoteHost
 
 __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
+# flags for changing script behavior
 ENABLE_SLACK_NOTIFICATION = True
+EXECUTE_REMOTE = True
+REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
+                [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
+
 time_limit_seconds = 10 * 60
 
 
@@ -173,8 +178,10 @@ def distributed_execution(configurations, resource_dir=None):
     from slack_notification import start_experiment_notification, \
         end_experiment_notification
 
-    # executor = create_remote_distlre_executor()
-    executor = create_local_distlre_executor(6)
+    if EXECUTE_REMOTE:
+        executor = create_remote_distlre_executor()
+    else:
+        executor = create_local_distlre_executor(6)
 
     futures = []
     progress_bar = tqdm(total=len(configurations), smoothing=0.1)
@@ -193,9 +200,9 @@ def distributed_execution(configurations, resource_dir=None):
         metadata = str(json_configuration)
         command = ' '.join([executable, resources, metadata])
 
-        # giving an additional 30 seconds to task. We want the cpp code to time out so we can get some info
+        # giving an additional 60 seconds to task. We want the cpp code to time out so we can get some info
         # about the run
-        task = Task(command=command, meta=None, time_limit=time_limit_seconds + 30, memory_limit=10)
+        task = Task(command=command, meta=None, time_limit=time_limit_seconds + 60, memory_limit=10)
         task.input = json_configuration.encode()
 
         # print(task.command)
@@ -208,7 +215,11 @@ def distributed_execution(configurations, resource_dir=None):
         futures.append(future)
 
     if ENABLE_SLACK_NOTIFICATION:
-        start_experiment_notification(experiment_count=len(configurations))
+        if EXECUTE_REMOTE:
+            machine = REMOTE_HOSTS
+        else:
+            machine = 'local workstation'
+        start_experiment_notification(experiment_count=len(configurations), machine=machine)
     print('Experiments started')
     executor.execute_tasks()
 
@@ -278,17 +289,15 @@ def create_local_distlre_executor(local_threads):
 
 
 def create_remote_distlre_executor(local_threads=None):
-    HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
-             [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
     print('\nExecuting configurations on the following ai servers: ')
-    print(HOSTS)
+    print(REMOTE_HOSTS)
 
     # I would recommend setting up public key auth for your ssh
     # import getpass
     # password = getpass.getpass("Password to connect to [ai.cs.unh.edu]")
     password = None
     remote_hosts = [RemoteHost(host, 'echo 1', port=22, password=password) for host in
-                    HOSTS]
+                    REMOTE_HOSTS]
 
     if local_threads:
         return DistLRE(remote_hosts=remote_hosts, local_threads=local_threads)
