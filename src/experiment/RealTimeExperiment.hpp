@@ -69,7 +69,7 @@ class RealTimeExperiment : Experiment<Domain, Planner> {
     while (!domain.isGoal(currentState)) {
       if (experimentTimeLimit.has_value() &&
           experimentTimeLimit.value().reachedTermination()) {
-        throw MetronomeException("Timeout!");
+        throw MetronomeTimeoutException();
       }
 
       if (dynamicLookahead) {

@@ -95,84 +95,93 @@ public:
     // if planner accepts termination checker, give it
     giveTerminationChecker(grdPlanner, experimentTimeLimit.value());
 
-    // Implement loop - get intervention, then action. Repeat.
-    while (!domain.isGoal(subjectState, subjectGoal)) {
-      if (experimentTimeLimit.has_value() &&
-          experimentTimeLimit.value().reachedTermination()) {
-        throw MetronomeException("Timeout!");
-      }
+    try {
+      // Implement loop - get intervention, then action. Repeat.
+      while (!domain.isGoal(subjectState, subjectGoal)) {
+        if (experimentTimeLimit.has_value() &&
+            experimentTimeLimit.value().reachedTermination()) {
+          throw MetronomeTimeoutException();
+        }
 
-      // clear goal for Observer Intervention
-      domain.clearCurrentGoal();
-      turnCount++;
+        // clear goal for Observer Intervention
+        domain.clearCurrentGoal();
+        turnCount++;
 
-      // Measure planning time, execute GRD iteration
-      const auto iterationStartTime = currentNanoTime();
-      std::vector<InterventionBundle<Domain>> interventions = grdPlanner.selectInterventions(subjectState, domain);
-      const auto iterationEndTime = currentNanoTime();
+        // Measure planning time, execute GRD iteration
+        const auto iterationStartTime = currentNanoTime();
+        std::vector<InterventionBundle<Domain>> interventions = grdPlanner.selectInterventions(subjectState, domain);
+        const auto iterationEndTime = currentNanoTime();
 
-      const auto iterationDuration = iterationEndTime - iterationStartTime;
-      grdPlanningTime += iterationDuration;
+        const auto iterationDuration = iterationEndTime - iterationStartTime;
+        grdPlanningTime += iterationDuration;
 
-      if (interventions.size() > 0) {
-        // recreate deque
-        cachedInterventions = std::deque<InterventionBundle<Domain>>(interventions.begin(), interventions.end());
-      } else if (cachedInterventions.size() == 0) {
-        cachedInterventions.push_back(grdPlanner.getIdentityIntervention(domain));
-      }
+        if (interventions.size() > 0) {
+          // recreate deque
+          cachedInterventions = std::deque<InterventionBundle<Domain>>(interventions.begin(), interventions.end());
+        } else if (cachedInterventions.size() == 0) {
+          cachedInterventions.push_back(grdPlanner.getIdentityIntervention(domain));
+        }
 
-      // apply next intervention, keep changed states
-      const InterventionBundle interventionBundle = cachedInterventions.front();
-      const auto patch = validateIntervention(domain, interventionBundle.intervention, subjectState);
-      grdExecutionCost += interventionBundle.interventionCost;
+        // apply next intervention, keep changed states
+        const InterventionBundle interventionBundle = cachedInterventions.front();
+        const auto patch = validateIntervention(domain, interventionBundle.intervention, subjectState);
+        grdExecutionCost += interventionBundle.interventionCost;
 
 #ifdef ENABLE_PLAYBACK
-      visualize(domain, playbackOutputStream, subjectState);
+        visualize(domain, playbackOutputStream, subjectState);
 #endif
 
 
-      // Subject Iteration
-      // First check to see if anything has changed (or we've run out of actions). If not, don't invoke planner
-      if (patch.affectedStates.size() > 0 || cachedActions.size() == 0) {
-        domain.setCurrentGoal(subjectGoal);
+        // Subject Iteration
+        // First check to see if anything has changed (or we've run out of actions). If not, don't invoke planner
+        if (patch.affectedStates.size() > 0 || cachedActions.size() == 0) {
+          domain.setCurrentGoal(subjectGoal);
 
-        // dynamic planner
-        // we don't care so much about its timing, so just plan and store
-        std::vector<ActionBundle> actions = subjectPlanner.replan(subjectState, patch.affectedStates, domain);
+          // dynamic planner
+          // we don't care so much about its timing, so just plan and store
+          std::vector<ActionBundle> actions = subjectPlanner.replan(subjectState, patch.affectedStates, domain);
 
-        // cache actions in case GRD planner doesn't affect any states
-        cachedActions = std::deque<ActionBundle>(actions.begin(), actions.end());
-      }
+          // cache actions in case GRD planner doesn't affect any states
+          cachedActions = std::deque<ActionBundle>(actions.begin(), actions.end());
+        }
 
-      // transition subject
-      const ActionBundle actionBundle = cachedActions.front();
-      subjectState = validateAction(domain, subjectState, actionBundle.action);
-      subjectExecutionCost += actionBundle.actionDuration;
+        // transition subject
+        const ActionBundle actionBundle = cachedActions.front();
+        subjectState = validateAction(domain, subjectState, actionBundle.action);
+        subjectExecutionCost += actionBundle.actionDuration;
 
 #ifdef ENABLE_PLAYBACK
-      visualize(domain, playbackOutputStream, subjectState);
+        visualize(domain, playbackOutputStream, subjectState);
 #endif
 
-      // construct pair
-      turns.emplace_back(interventionBundle.intervention, actionBundle.action);
+        // construct pair
+        turns.emplace_back(interventionBundle.intervention, actionBundle.action);
 
-      cachedActions.pop_front();
-      cachedInterventions.pop_front();
+        cachedActions.pop_front();
+        cachedInterventions.pop_front();
 
-      // get goal prediction
-      auto optionalGoalPrediction = grdPlanner.getGoalPrediction(domain, subjectState);
-      if (optionalGoalPrediction.has_value()) {
-        goalPrediction = *optionalGoalPrediction;
-        if (goalPrediction == subjectGoal) {
-          if (goalReportedOnTurn == 0) {
-            goalReportedOnTurn = turnCount;
+        // get goal prediction
+        auto optionalGoalPrediction = grdPlanner.getGoalPrediction(domain, subjectState);
+        if (optionalGoalPrediction.has_value()) {
+          goalPrediction = *optionalGoalPrediction;
+          if (goalPrediction == subjectGoal) {
+            if (goalReportedOnTurn == 0) {
+              goalReportedOnTurn = turnCount;
+            }
+          } else {
+            // reset for incorrect predictions
+            goalReportedOnTurn = 0;
           }
-        } else {
-          // reset for incorrect predictions
-          goalReportedOnTurn = 0;
         }
       }
+    } catch (MetronomeTimeoutException& timeoutEx) {
+      // handle timeouts specially so we can report on certain info
+      Result result{configuration, "Timeout"};
+      result.attributes = grdPlanner.getAttributes();
+
+      return result;
     }
+
 
 #ifdef ENABLE_PLAYBACK
     // close playback outstream

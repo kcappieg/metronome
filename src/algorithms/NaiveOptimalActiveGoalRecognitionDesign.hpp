@@ -382,9 +382,9 @@ namespace metronome {
       }
 
       // only check every 200 nodes of the DFS
-      if(terminationChecker.has_value() && ++timeoutCounter % 1000 == 0) {
+      if(terminationChecker.has_value() && ++timeoutCounter % 100 == 0) {
         if (terminationChecker->reachedTermination()) {
-          throw MetronomeException("Timeout!");
+          throw MetronomeTimeoutException();
         }
       }
 
@@ -549,9 +549,9 @@ namespace metronome {
       }
 
       // only check every 200 nodes of the DFS
-      if(terminationChecker.has_value() && ++timeoutCounter % 1000 == 0) {
+      if(terminationChecker.has_value() && ++timeoutCounter % 100 == 0) {
         if (terminationChecker->reachedTermination()) {
-          throw MetronomeException("Timeout!");
+          throw MetronomeTimeoutException();
         }
       }
 

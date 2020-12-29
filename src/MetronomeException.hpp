@@ -13,4 +13,9 @@ class MetronomeException : std::exception {
   const std::string message;
 };
 
+class MetronomeTimeoutException : public MetronomeException {
+ public:
+  MetronomeTimeoutException() : MetronomeException("Timeout!") {}
+};
+
 }  // namespace metronome

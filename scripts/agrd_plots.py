@@ -1,6 +1,7 @@
 
 import gzip
 import json
+from operator import itemgetter
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,20 +17,28 @@ from scripts.metronome_plot import construct_data_frame, read_data, remove_unuse
 __author__ = "Kevin C. Gall"
 
 
-def main(paths, title, file_name):
+def main(paths, configs):
     set_rc()
-    data = prepare_data(paths)
-    plot_runtime(data, title, file_name)
+    idx = 0
+    for config in configs:
+        title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
+        data = prepare_data(paths, domain_filter)
+        plot_runtime(data, title, file_name)
 
 
-def prepare_data(paths):
+def prepare_data(paths, domain_filter):
     results = []
     for path_name in paths:
         results += read_data(path_name)
 
     data = construct_data_frame(results)
+    if domain_filter is not None:
+        data = data[data.domainPath.str.contains(domain_filter, regex=False)]
+
     # get rid of timeouts
+    timeouts = data[~data.success]
     data = data[data.success]
+    print(len(timeouts), 'Failed instances')
     remove_unused_columns(data, [
         'actionDuration', 'actionExecutionTime', 'commitmentStrategy', 'errorMessage',
         'goalAchievementTime', 'heuristicMultiplier', 'identityActions', 'idleIterationCount',
@@ -37,8 +46,12 @@ def prepare_data(paths):
     ])
 
     add_depth_upper_bound(data)
-
     print(f'Completed instances: {len(data)}')
+    # remove depth=0. Could happen if instance starts in goal configuration
+    # such instances should be filtered out of experiments... but bandaid here instead
+    data = data[data.depthUpperBound > 0]
+    print(f'Valid completed instances: {len(data)}')
+
     return data
 
 
@@ -67,7 +80,7 @@ def plot_runtime(data, title, file_name):
     plot_log = True
 
     results = DataFrame(
-        columns="depthUpperBound firstIterationRuntime algorithmName lbound rbound".split()
+        columns="depthUpperBound firstIterationRuntime algorithmName lbound rbound numInstances".split()
     )
     # rescale runtime to ms
     data['firstIterationRuntime'] = data['firstIterationRuntime'] / 1000000
@@ -92,7 +105,8 @@ def plot_runtime(data, title, file_name):
         results = add_row(results,
                           [fields[1], mean_runtime, alg_name,
                            abs(mean_runtime - bound[0]),
-                           abs(mean_runtime - bound[1])])
+                           abs(mean_runtime - bound[1]),
+                           len(depth_group)])
 
     errors = []
     for alg, alg_group in results.groupby('algorithmName'):
@@ -103,13 +117,13 @@ def plot_runtime(data, title, file_name):
     pivot = pivot[~pivot.index.duplicated(keep='first')]
 
     palette = sns.color_palette(n_colors=10)
-    plot = pivot.plot(color=palette, title=title, legend=False, yerr=errors,
+    plot = pivot.plot(color=palette, title=title, legend=True, yerr=errors,
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1)
 
     if plot_log:
         num_levels_below_zero = 1
-        num_levels_zero_above = 6
+        num_levels_zero_above = 8
 
         ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
         ticks += [10 ** num for num in range(num_levels_zero_above)]
@@ -117,7 +131,10 @@ def plot_runtime(data, title, file_name):
         plot.set_yticks(np.log(ticks))
         plot.set_yticklabels([num if num < 10000 else f'{num:.1g}' for num in ticks])
 
-    # plot.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
+    instances_pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
+                                    values="numInstances")
+    # plot.plot(instances_pivot.index, instances_pivot.values, linestyle='--', color='r')
+    print(instances_pivot)
 
     plot.set_xlabel('Depth Upper Bound')
     plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
@@ -129,6 +146,26 @@ def plot_runtime(data, title, file_name):
 
 
 if __name__ == "__main__":
-    main(['../results/optimal-agrd-gridworld.json'],
-         'Optimal AGRD Complexity',
-         'optimal_agrd_runtime')
+    main(['../results/grd-12-28-20.json'],
+         [
+             {
+                 'title': 'Optimal AGRD Complexity - Uniform Gridworld',
+                 'file_name': 'uniform_agrd_runtime',
+                 'domain_filter': 'grd/uniform'
+             },
+             {
+                 'title': 'Optimal AGRD Complexity - Rooms Gridworld',
+                 'file_name': 'rooms_agrd_runtime',
+                 'domain_filter': 'grd/rooms'
+             },
+             {
+                 'title': 'Optimal AGRD Complexity - Logistics',
+                 'file_name': 'logistics_agrd_runtime',
+                 'domain_filter': 'grd/logistics'
+             },
+             {
+                 'title': 'Optimal AGRD Complexity',
+                 'file_name': 'all_agrd_runtime',
+                 'domain_filter': None
+             }
+         ])
