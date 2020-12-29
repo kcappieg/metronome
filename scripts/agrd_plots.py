@@ -1,4 +1,3 @@
-
 import gzip
 import json
 from operator import itemgetter
@@ -13,7 +12,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from scripts.metronome_plot import construct_data_frame, read_data, remove_unused_columns, set_rc, add_row, alg_map
 
-
 __author__ = "Kevin C. Gall"
 
 
@@ -23,7 +21,8 @@ def main(paths, configs):
     for config in configs:
         title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
         data = prepare_data(paths, domain_filter)
-        plot_runtime(data, title, file_name)
+        # plot_runtime(data, title, file_name)
+        plot_scatter(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
@@ -46,11 +45,15 @@ def prepare_data(paths, domain_filter):
     ])
 
     add_depth_upper_bound(data)
+    add_num_goals(data)
     print(f'Completed instances: {len(data)}')
     # remove depth=0. Could happen if instance starts in goal configuration
     # such instances should be filtered out of experiments... but bandaid here instead
     data = data[data.depthUpperBound > 0]
     print(f'Valid completed instances: {len(data)}')
+
+    # rescale runtime to ms
+    data['firstIterationRuntime_ms'] = data['firstIterationRuntime'] / 1000000
 
     return data
 
@@ -76,17 +79,20 @@ def add_depth_upper_bound(data):
     data['depthUpperBound'] = depth_bound_values
 
 
+def add_num_goals(data):
+    num_goals_series = [len(priors) for priors in data.goalPriors]
+    data['numGoals'] = num_goals_series
+
+
 def plot_runtime(data, title, file_name):
     plot_log = True
 
     results = DataFrame(
-        columns="depthUpperBound firstIterationRuntime algorithmName lbound rbound numInstances".split()
+        columns="depthUpperBound runtime algorithmName lbound rbound numInstances".split()
     )
-    # rescale runtime to ms
-    data['firstIterationRuntime'] = data['firstIterationRuntime'] / 1000000
 
     if plot_log:
-        data['firstIterationRuntime'] = np.log(data['firstIterationRuntime'])
+        data['runtime_axis'] = np.log(data['firstIterationRuntime_ms'])
 
     # average runtime for all instances that share a depth bound
     for fields, depth_group in data.groupby(['algorithmName', 'depthUpperBound']):
@@ -99,8 +105,8 @@ def plot_runtime(data, title, file_name):
             alg_name = alg_map[alg_name]
 
         # confidence
-        mean_runtime = depth_group['firstIterationRuntime'].mean()
-        runtime_list = list(depth_group['firstIterationRuntime'])
+        mean_runtime = depth_group['runtime_axis'].mean()
+        runtime_list = list(depth_group['runtime_axis'])
         bound = sms.DescrStatsW(runtime_list).zconfint_mean()
         results = add_row(results,
                           [fields[1], mean_runtime, alg_name,
@@ -113,11 +119,12 @@ def plot_runtime(data, title, file_name):
         errors.append([alg_group['lbound'].values, alg_group['rbound'].values])
 
     pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
-                       values="firstIterationRuntime")
+                          values="runtime_axis")
     pivot = pivot[~pivot.index.duplicated(keep='first')]
 
     palette = sns.color_palette(n_colors=10)
-    plot = pivot.plot(color=palette, title=title, legend=True, yerr=errors,
+    plt_title = 'Optimal AGRD Complexity' + ('' if title is None else ' - ' + title)
+    plot = pivot.plot(color=palette, title=plt_title, legend=True, yerr=errors,
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1)
 
@@ -139,33 +146,47 @@ def plot_runtime(data, title, file_name):
     plot.set_xlabel('Depth Upper Bound')
     plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
 
-    pdf = PdfPages("../results/plots/" + file_name + ".pdf")
+    pdf = PdfPages("../results/plots/" + file_name + "_agrd_runtime.pdf")
     plt.savefig(pdf, format='pdf')
     pdf.close()
     # plt.show()
 
 
+def plot_scatter(data, title, file_name):
+    plt_title = 'Runtime Scatter' if title is None else title
+    plot = data.plot.scatter(title=plt_title,
+                             x='depthUpperBound', y='firstIterationRuntime_ms',
+                             c='numGoals', colormap='Accent')
+
+    plot.set_xlabel('Depth Upper Bound')
+    plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
+
+    # TODO: save plot to pdf
+
+    plt.show()
+
+
 if __name__ == "__main__":
     main(['../results/grd-12-28-20.json'],
          [
-             {
-                 'title': 'Optimal AGRD Complexity - Uniform Gridworld',
-                 'file_name': 'uniform_agrd_runtime',
-                 'domain_filter': 'grd/uniform'
-             },
-             {
-                 'title': 'Optimal AGRD Complexity - Rooms Gridworld',
-                 'file_name': 'rooms_agrd_runtime',
-                 'domain_filter': 'grd/rooms'
-             },
-             {
-                 'title': 'Optimal AGRD Complexity - Logistics',
-                 'file_name': 'logistics_agrd_runtime',
-                 'domain_filter': 'grd/logistics'
-             },
+             # {
+             #     'title': 'Uniform Gridworld',
+             #     'file_name': 'uniform',
+             #     'domain_filter': 'grd/uniform'
+             # },
+             # {
+             #     'title': 'Rooms Gridworld',
+             #     'file_name': 'rooms',
+             #     'domain_filter': 'grd/rooms'
+             # },
+             # {
+             #     'title': 'Logistics',
+             #     'file_name': 'logistics',
+             #     'domain_filter': 'grd/logistics'
+             # },
              {
                  'title': 'Optimal AGRD Complexity',
-                 'file_name': 'all_agrd_runtime',
+                 'file_name': 'all',
                  'domain_filter': None
              }
          ])
