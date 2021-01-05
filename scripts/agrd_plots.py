@@ -54,6 +54,7 @@ def prepare_data(paths, domain_filter):
 
     # rescale runtime to ms
     data['firstIterationRuntime_ms'] = data['firstIterationRuntime'] / 1000000
+    data['logRuntime'] = np.log(data['firstIterationRuntime_ms'])
 
     return data
 
@@ -92,7 +93,7 @@ def plot_runtime(data, title, file_name):
     )
 
     if plot_log:
-        data['runtime_axis'] = np.log(data['firstIterationRuntime_ms'])
+        data['runtime_axis'] = data['logRuntime']
 
     # average runtime for all instances that share a depth bound
     for fields, depth_group in data.groupby(['algorithmName', 'depthUpperBound']):
@@ -129,14 +130,7 @@ def plot_runtime(data, title, file_name):
                       capsize=4, capthick=1)
 
     if plot_log:
-        num_levels_below_zero = 1
-        num_levels_zero_above = 8
-
-        ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
-        ticks += [10 ** num for num in range(num_levels_zero_above)]
-
-        plot.set_yticks(np.log(ticks))
-        plot.set_yticklabels([num if num < 10000 else f'{num:.1g}' for num in ticks])
+        set_log_ticks(plot)
 
     instances_pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
                                     values="numInstances")
@@ -154,16 +148,33 @@ def plot_runtime(data, title, file_name):
 
 def plot_scatter(data, title, file_name):
     plt_title = 'Runtime Scatter' if title is None else title
-    plot = data.plot.scatter(title=plt_title,
-                             x='depthUpperBound', y='firstIterationRuntime_ms',
+
+    plot = data.plot.scatter(title=plt_title, legend=True,
+                             x='depthUpperBound', y='logRuntime',
                              c='numGoals', colormap='Accent')
 
     plot.set_xlabel('Depth Upper Bound')
     plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
 
+    xticks = [depth for depth in range(int(data.depthUpperBound.max()))]
+    plot.set_xticks(xticks)
+
+    set_log_ticks(plot)
+
     # TODO: save plot to pdf
 
     plt.show()
+
+
+def set_log_ticks(plot):
+    num_levels_below_zero = 1
+    num_levels_zero_above = 8
+
+    ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
+    ticks += [10 ** num for num in range(num_levels_zero_above)]
+
+    plot.set_yticks(np.log(ticks))
+    plot.set_yticklabels([num if num < 10000 else f'{num:.1g}' for num in ticks])
 
 
 if __name__ == "__main__":
@@ -179,14 +190,14 @@ if __name__ == "__main__":
              #     'file_name': 'rooms',
              #     'domain_filter': 'grd/rooms'
              # },
-             # {
-             #     'title': 'Logistics',
-             #     'file_name': 'logistics',
-             #     'domain_filter': 'grd/logistics'
-             # },
              {
-                 'title': 'Optimal AGRD Complexity',
-                 'file_name': 'all',
-                 'domain_filter': None
+                 'title': 'Logistics',
+                 'file_name': 'logistics',
+                 'domain_filter': 'grd/logistics'
+             # },
+             # {
+             #     'title': 'Optimal AGRD Complexity',
+             #     'file_name': 'all',
+             #     'domain_filter': None
              }
          ])

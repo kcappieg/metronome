@@ -127,7 +127,15 @@ namespace metronome {
         Base::recordAttribute("firstIterationRuntime", iterationEndTime - iterationStartTime);
       }
 
-      if (intervention.has_value()) return {*intervention};
+      if (intervention.has_value()) {
+        // we want to know if this domain actually has something for the observer
+        // to do, so store that here
+        if (intervention->intervention != domain->getIdentityIntervention()) {
+          Base::recordAttribute("observerIsActive", 1);
+        }
+
+        return {*intervention};
+      }
       return {};
     }
 

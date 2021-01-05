@@ -12,8 +12,8 @@ from distlre.distlre import DistLRE, Task, RemoteHost
 __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 # flags for changing script behavior
-ENABLE_SLACK_NOTIFICATION = True
-EXECUTE_REMOTE = True
+ENABLE_SLACK_NOTIFICATION = False
+EXECUTE_REMOTE = False
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
 

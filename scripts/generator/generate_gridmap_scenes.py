@@ -152,10 +152,12 @@ def main(args):
         if args.filter:
             domain_type = 'VACUUM_WORLD' if num_goals > 1 else 'GRID_WORLD'
             print('Checking for observer access to goals')
-            passed = filter_domains(alt_instance_paths, base_filename, domain_type, out_path, write=False)
+            passed = filter_domains(alt_instance_paths, base_filename, domain_type,
+                                    '.vw', out_path, write=False)
             domain_instance_paths = ['/' + domain_path[5:] for domain_path in passed]
             print('Filtering from remaining')
-            filter_domains(domain_instance_paths, base_filename, domain_type, out_path, write=True)
+            filter_domains(domain_instance_paths, base_filename, domain_type,
+                           '.vw', os.path.join(out_path, 'filtered'), write=True)
 
     shutil.rmtree(alt_dir)
 

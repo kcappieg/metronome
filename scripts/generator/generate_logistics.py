@@ -263,7 +263,7 @@ class GeometricNetwork:
 
 
 def euclidean_dist_sq(pt1, pt2):
-    '''Helper - Euclidean dist between points, squared'''
+    """Helper - Euclidean dist between points, squared"""
     return ((pt1[0] - pt2[0]) ** 2) + ((pt1[1] - pt2[1]) ** 2)
 
 

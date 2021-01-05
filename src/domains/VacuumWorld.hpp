@@ -453,6 +453,9 @@ class VacuumWorld {
     bool operator==(const Intervention&) const {
       throw MetronomeException("Not Implemented");
     }
+    bool operator!=(const Intervention&) const {
+      throw MetronomeException("Not Implemented");
+    }
 
     friend std::ostream& operator<<(std::ostream&, const Intervention&) {
       throw MetronomeException("Not implemented");

@@ -164,6 +164,10 @@ class GridWorld {
       return other.interventionType == interventionType && other.obstacle == obstacle;
     }
 
+    bool operator!=(const Intervention& other) const {
+      return !(*this == other);
+    }
+
     friend std::ostream& operator<<(std::ostream& stream, const GridWorld::Intervention& intervention) {
       std::ostringstream interventionStr;
       switch(intervention.interventionType) {

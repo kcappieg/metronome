@@ -414,7 +414,7 @@ def main(args):
 
     if args.filter:
         domain_type = 'VACUUM_WORLD' if goals > 1 else 'GRID_WORLD'
-        filter_domains(generated_domains, base_domain_name, domain_type, outPath)
+        filter_domains(generated_domains, base_domain_name, domain_type, '.vw', os.path.join(outPath, 'filtered'))
 
 
 def get_base_domain_name(strategy, width, height):
