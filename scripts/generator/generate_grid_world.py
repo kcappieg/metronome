@@ -9,16 +9,17 @@ from filter_domains import filter_domains
 
 __author__ = 'Kevin C. Gall'
 
+
 # Good configs:
 # python3 generate_grid_world.py 1500 1500 1000 -o 0.0006 -s corridors -c 0.07 -e 2
 #   around 10% solvable
 
 
-def generate_goals(goals, width, height, start, observer_start = None):
+def generate_goals(goals, width, height, start, observer_start=None):
     goal_set = set()
     if goals > 1:
         while len(goal_set) < goals:
-            goal = (np.random.randint(0, width-1), np.random.randint(0, height-1))
+            goal = (np.random.randint(0, width - 1), np.random.randint(0, height - 1))
             if goal != start and goal != observer_start:
                 goal_set.add(goal)
     else:
@@ -70,13 +71,13 @@ class SingleObstacleStrategy:
         self._observer_start = obs_start
         return obs_start
 
-
     def reset(self):
-        np.random.seed(rand_seed.next_seed())
+        pass
 
 
 class EnclosureObstacleStrategy:
-    def __init__(self, width, height, probability, intervention_percentage, sizeBound, widthFactor = 1.0, exits=0, equalLength = False, alignDirections = False):
+    def __init__(self, width, height, probability, intervention_percentage, sizeBound, widthFactor=1.0, exits=0,
+                 equalLength=False, alignDirections=False):
         self.width = width
         self.height = height
         self.intervention_percentage = intervention_percentage
@@ -125,7 +126,6 @@ class EnclosureObstacleStrategy:
 
         return firstVector, midVector, lastVector
 
-
     def add_enclosure(self, obstacleTracker, start):
         # Get random size for the enclosure
         firstWallSize = np.random.randint(1, self.sizeBound)
@@ -154,7 +154,8 @@ class EnclosureObstacleStrategy:
 
         # Add wall spaces to the obstacle tracker
         current = (start[0], start[1])
-        for wallIndex, wall in enumerate([(firstVector, firstWallSize), (midVector, midWallSize), (lastVector, lastWallSize)]):
+        for wallIndex, wall in enumerate(
+                [(firstVector, firstWallSize), (midVector, midWallSize), (lastVector, lastWallSize)]):
             for i in range(wall[1]):
                 if (wallIndex, i) not in exitSet:
                     obstacleTracker.add(current)
@@ -178,6 +179,7 @@ class EnclosureObstacleStrategy:
     def reset(self):
         if self.alignDirections:
             self.directions = self.get_directions()
+
 
 # Creates domain with uniformly distributed obstacles and tunnels
 # through said obstacles which are clear of obstructions.
@@ -210,12 +212,11 @@ class TunnelsStrategy:
             if tunnels == 0:
                 continue
 
-
             centered_y_vals = np.random.normal(self.mean, self.stddev, tunnels)
             # convert y to edge value
             edge_y_vals = []
             for y in centered_y_vals:
-                dist_from_mean = int(self.mean - y) # may round. That's fine
+                dist_from_mean = int(self.mean - y)  # may round. That's fine
                 # height - 3 because:
                 #   0 Indexed (1)
                 #   each tunnel needs width 3, so give ourselves padding
@@ -280,10 +281,9 @@ class TunnelsStrategy:
             tunnel_path.add(entrance)
             tunnel_path.add(exit)
 
-
         return tunnel_walls, tunnel_path
 
-    def generate_goals(self, goal_count = 1):
+    def generate_goals(self, goal_count=1):
         # goal_count ignored for this domain
         return set([(self.width - 2, int(self.height / 2))])
 
@@ -304,6 +304,10 @@ def main(args):
     intervention_percentage = args.intervention_probability
     observer = args.observer
 
+    seed_skip = args.seed_skip
+    rand_seed.skip_n_seeds(seed_skip)
+    np.random.seed(rand_seed.next_seed())
+
     # Size bound for enclosures calculated using power
     size_bound = max(int(height ** 0.7), 1)
 
@@ -321,24 +325,27 @@ def main(args):
             print('Single Cell obstacle strategy')
 
     elif strategy == 'minima':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound)
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage,
+                                                   size_bound)
         if args.verbose:
             print(f'Minima obstacle strategy. Size bound {size_bound}')
 
     elif strategy == 'corridors':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound,
-                                                    widthFactor=args.corridor_width_factor,
-                                                    exits=args.corridor_exits,
-                                                    equalLength=True)
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage,
+                                                   size_bound,
+                                                   widthFactor=args.corridor_width_factor,
+                                                   exits=args.corridor_exits,
+                                                   equalLength=True)
         if args.verbose:
             print(f'Corridors obstacle strategy. Size bound {size_bound}')
 
     elif strategy == 'corridors-aligned':
-        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage, size_bound,
-                                                    widthFactor=args.corridor_width_factor,
-                                                    exits=args.corridor_exits,
-                                                    equalLength=True,
-                                                    alignDirections=True)
+        domain_builder = EnclosureObstacleStrategy(width, height, obstacle_percentage, intervention_percentage,
+                                                   size_bound,
+                                                   widthFactor=args.corridor_width_factor,
+                                                   exits=args.corridor_exits,
+                                                   equalLength=True,
+                                                   alignDirections=True)
         if args.verbose:
             print(f'Aligned Corridors obstacle strategy. Size bound {size_bound}')
 
@@ -347,7 +354,8 @@ def main(args):
                                          stddev=args.tunnel_deviation)
 
         if args.verbose:
-            print(f'Tunnels strategy. Tunnel size bound {size_bound}, obstacle likelihood {obstacle_percentage}, deviation {args.tunnel_deviation}')
+            print(
+                f'Tunnels strategy. Tunnel size bound {size_bound}, obstacle likelihood {obstacle_percentage}, deviation {args.tunnel_deviation}')
 
     outPath = args.path
 
@@ -367,12 +375,12 @@ def main(args):
         domain_builder.reset()
 
         newDomain = base_domain_name + str(iteration)
-        completeFile = os.path.join(outPath, newDomain+'.vw')
+        completeFile = os.path.join(outPath, newDomain + '.vw')
         generated_domains.append(completeFile)
 
         aFile = open(completeFile, 'w')
 
-        preamble = str(width)+'\n'+str(height)+'\n'
+        preamble = str(width) + '\n' + str(height) + '\n'
         world = ''
 
         obs_start = (None, None)
@@ -424,9 +432,10 @@ def get_base_domain_name(strategy, width, height):
 if __name__ == '__main__':
     # Begin Argument Definition
 
-    parser = argparse.ArgumentParser(description='Generate grid-world instances. Tunnel domains place the agent and goal'
-                                                 + ' in the center of the grid and distribute the tunnels weighted toward'
-                                                 + ' the edges of the grid.')
+    parser = argparse.ArgumentParser(
+        description='Generate grid-world instances. Tunnel domains place the agent and goal'
+                    ' in the center of the grid and distribute the tunnels weighted toward'
+                    ' the edges of the grid.')
 
     parser.add_argument('height', help='the height of the Vehicle world', type=int)
     parser.add_argument('width', help='the width of the Vehicle world', type=int)
@@ -439,21 +448,23 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-o', '--obstacle-probability', default=0.0, type=float,
                         help='probability of obstacle to begin in any given grid cell')
-    parser.add_argument('-s', '--strategy', choices=['single', 'minima', 'corridors', 'corridors-aligned', 'tunnels'], default='single',
+    parser.add_argument('-s', '--strategy', choices=['single', 'minima', 'corridors', 'corridors-aligned', 'tunnels'],
+                        default='single',
                         help='obstacle structure strategy for the generated worlds. Defaults to "single". If "corridors-aligned", all corridors will be facing one direction')
-    parser.add_argument('-c','--corridor-width-factor', default=0.05, type=float,
+    parser.add_argument('-c', '--corridor-width-factor', default=0.05, type=float,
                         help='Factor of the width of a corridor. Only used in the corridors and corridors-aligned strategies')
     parser.add_argument('-e', '--corridor-exits', default=1, type=int,
                         help='If a corridor strategy, defines how many "exits" from the corridor will be generated. Exits appear on either of the length walls')
     parser.add_argument('-d', '--tunnel-deviation', default=10, type=float,
-                         help='If tunnels strategy, the standard deviation to be used in the normal distribution for tunnel generation. Higher numbers make it more likely for tunnels to be closer to center')
+                        help='If tunnels strategy, the standard deviation to be used in the normal distribution for tunnel generation. Higher numbers make it more likely for tunnels to be closer to center')
     parser.add_argument('-f', '--filter', default=None, action='store_true',
                         help='Filter generated domains to only solvable. Assumes a previous build of Metronome. Executes A_STAR on each domain.')
     parser.add_argument('--observer', action='store_true', help='Flag to add observer')
     parser.add_argument('-i', '--intervention-probability', default=0.0, type=float,
                         help='Probability of possible intervention in any given clear cell')
+    parser.add_argument('--seed-skip', type=int, default=0,
+                        help='If passed, skip this many random seeds')
 
     # End argument definition
 
     main(args=parser.parse_args())
-

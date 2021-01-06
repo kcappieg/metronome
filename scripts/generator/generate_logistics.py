@@ -19,13 +19,19 @@ __author__ = 'Kevin C. Gall'
 def main(args):
     locations = args.locations
     goals = args.goals
+    goal_fluents = args.goal_fluents
     total = args.total
     density = args.density
     topology = args.topology
     clusters = args.clusters
     connection_distance = args.connection_distance
+    max_cost = args.max_cost
     trucks = args.trucks
     packages = args.packages
+
+    seed_skip = args.seed_skip
+    rand_seed.skip_n_seeds(seed_skip)
+    np.random.seed(rand_seed.next_seed())
 
     out_path = args.path
     verbose = args.verbose
@@ -37,11 +43,11 @@ def main(args):
     network_builder = None
 
     if topology == 'cluster':
-        network_builder = ClusterNetwork(locations, density, clusters)
+        network_builder = ClusterNetwork(locations, max_cost, density, clusters)
     elif topology == 'cycle':
-        network_builder = CycleNetwork(locations, density)
+        network_builder = CycleNetwork(locations, max_cost, density)
     elif topology == 'geometric':
-        network_builder = GeometricNetwork(locations, connection_distance)
+        network_builder = GeometricNetwork(locations, max_cost, connection_distance)
 
     if topology == 'cluster':
         file_name = f'{clusters}clusters_{density}dense'
@@ -52,6 +58,7 @@ def main(args):
 
     file_name += f'_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
 
+    fluent_choices = [i for i in range(1, goal_fluents+1)]
     for i in range(total):
         np.random.seed(next_seed())
 
@@ -74,7 +81,7 @@ def main(args):
         for _ in range(goals):
             hyp = list()
             # weighting 2-goal combos higher than others
-            num_conditions = np.random.choice([1, 2, 3], p=[0.25, 0.5, 0.25])
+            num_conditions = np.random.choice(fluent_choices)
 
             for pkg in np.random.choice(packages, num_conditions, replace=False):
                 hyp.append(f'({pkg} {np.random.randint(0, locations)})')
@@ -91,12 +98,13 @@ def main(args):
 
 # Abstract class
 class Network:
-    def __init__(self, locations, density):
+    def __init__(self, locations, max_cost, density):
         self._num_locations = locations
         self._location_list = np.arange(locations)
         # Potential Connections
         pc = (locations * (locations - 1)) / 2
         self._max_connections = floor(density * pc)
+        self._max_cost = max_cost
 
     def generate_base_network(self):
         """Generate the base network
@@ -125,9 +133,8 @@ class Network:
             if not (edge[1], edge[0]) in network_no_dupes:
                 network_no_dupes.add(edge)
 
-        max_cost = 5  # arbitrary
         network_desc = ''
-        for edge, cost in zip(network_no_dupes, np.random.randint(1, max_cost + 1, len(network_no_dupes))):
+        for edge, cost in zip(network_no_dupes, np.random.randint(1, self._max_cost + 1, len(network_no_dupes))):
             network_desc += f'{edge[0]} {edge[1]} {cost}\n'
 
         return network_desc
@@ -201,9 +208,10 @@ class CycleNetwork(Network):
 
 
 class GeometricNetwork:
-    def __init__(self, locations, connection_distance):
+    def __init__(self, locations, max_cost, connection_distance):
         self._num_locations = locations
         self._max_dist_sq = connection_distance ** 2
+        self._max_cost = max_cost
 
     def get_geometric_graph(self):
         locations = [
@@ -256,7 +264,7 @@ class GeometricNetwork:
 
         network_desc = ''
         for edge in connected_network:
-            cost = ceil(5.0 * (edge[2] / self._max_dist_sq))
+            cost = ceil(self._max_cost * (edge[2] / self._max_dist_sq))
             network_desc += f'{edge[0]} {edge[1]} {cost}\n'
 
         return network_desc
@@ -283,8 +291,12 @@ if __name__ == '__main__':
                                            'more evenly throughout the network. Geometric is based on random '
                                            'sampling within unit square',
                         choices=['cluster', 'cycle', 'geometric'], default='geometric')
-    # TODO: add option for cost range. Just using 1 - 5 for now.
-    # TODO: add option for goal fluent count. Just using 1 - 3 for now.
+    parser.add_argument('--max-cost',
+                        help='Maximum cost for any edge. Edge costs will be in range [1, max_cost]',
+                        type=int, default=1)
+    parser.add_argument('--goal-fluents',
+                        help='Max number of goal fluents. Fluents number will be uniformly chosen from range [1,goal_fluents]',
+                        type=int, default=1)
     parser.add_argument('-d', '--connection-distance',
                         help='If topology is geometric, defines the connection distance between (0,1)',
                         type=float, default=0.2)
@@ -298,6 +310,8 @@ if __name__ == '__main__':
                              'but no time to fix',
                         default='./logistics')
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
+    parser.add_argument('--seed-skip', type=int, default=0,
+                        help='If passed, skip this many random seeds')
 
     # End argument definition
 

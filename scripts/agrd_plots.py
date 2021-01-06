@@ -61,7 +61,7 @@ def prepare_data(paths, domain_filter):
 
 def add_depth_upper_bound(data):
     depth_bound_values = []
-    for idx, row in data.iterrows():
+    for _, row in data.iterrows():
         most = 0
         second_most = 0
         idx = 0

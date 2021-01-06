@@ -35,7 +35,6 @@ def read_map_file(input_file):
 
 def create_gridworld_scene(base_map_info, num_goals, intervention_prob):
     """Creates a scene with random start locations for observer and subject"""
-    np.random.seed(rand_seed.next_seed())
     full_scene = base_map_info.copy()
     occupied = full_scene['obstacles'].copy()
 
@@ -128,6 +127,10 @@ def main(args):
     intervention_prob = args.intervention_probability
     out_path = args.path
 
+    seed_skip = args.seed_skip
+    rand_seed.skip_n_seeds(seed_skip)
+    np.random.seed(rand_seed.next_seed())
+
     if not os.path.exists(out_path):
         os.makedirs(out_path)
     alt_dir = os.path.join('./temp', out_path)
@@ -178,5 +181,7 @@ if __name__ == '__main__':
                         help='directory path to save the scenes. MUST BE RELATIVE PATH to cwd', default='./gridmap')
     parser.add_argument('-f', '--filter', default=None, action='store_true',
                         help='Filter generated domains to only solvable. Assumes a previous build of Metronome. Executes A_STAR on each domain.')
+    parser.add_argument('--seed-skip', type=int, default=0,
+                        help='If passed, skip this many random seeds')
 
     main(args=parser.parse_args())

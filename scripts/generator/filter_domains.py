@@ -1,12 +1,11 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 from shutil import copyfile, move
 
-
-def import_dist_ex():
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-    from Metronome import distributed_execution
-    return distributed_execution
+sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from Metronome import distributed_execution
 
 
 def generate_astar_configs(domain_paths, domain_type):
@@ -45,7 +44,7 @@ def generate_agrd_configs(domain_paths, domain_type, goals):
         config['domainName'] = domain_type
         config['terminationType'] = 'EXPANSION'
         config['subjectAlgorithm'] = 'NAIVE_DYNAMIC'
-        config['timeLimit'] = 30000000000
+        config['timeLimit'] = 30000000000  # 30 second timeout
         config['maxDepth'] = 1000,
         config['goalPriors'] = [1 / goals for _ in range(goals)]
         config['subjectGoal'] = 0
@@ -66,8 +65,6 @@ def filter_domains(generated_domain_paths, base_domain_name, domain_type='GRID_W
         os.makedirs(out_path)
     configs = generate_astar_configs(generated_domain_paths, domain_type)
 
-    distributed_execution = import_dist_ex()
-
     print('Begin filtering of generated domains')
 
     os.chdir('../..')
@@ -83,7 +80,7 @@ def filter_domains(generated_domain_paths, base_domain_name, domain_type='GRID_W
             if write:
                 new_file_name = os.path.join(out_path, base_domain_name + str(success_index) + domain_ext)
                 print(f'Outputting to {new_file_name}')
-                copyfile('.' + result['configuration']['domainPath'], new_file_name)
+                move('.' + result['configuration']['domainPath'], new_file_name)
 
             success_index += 1
         else:
@@ -91,6 +88,140 @@ def filter_domains(generated_domain_paths, base_domain_name, domain_type='GRID_W
             print(f'Domain {result["configuration"]["domainPath"]} was not successfully solved')
 
     return success_domains
+
+
+def get_with_default(d, key, default_value=None, default_producer=None):
+    if key not in d:
+        d[key] = default_value if default_producer is None else default_producer()
+
+    return d[key]
+
+
+def get_with_default_list(d, key):
+    return get_with_default(d, key, default_value=[])
+
+
+def get_with_default_dict(d, key):
+    return get_with_default(d, key, default_value=dict())
+
+
+def get_depth_upper_bound(result):
+    most = 0
+    second_most = 0
+    idx = 0
+    while f'Goal_{idx}' in result:
+        cost = result[f'Goal_{idx}']
+        if cost > most:
+            second_most = most
+            most = cost
+        elif cost > second_most:
+            second_most = cost
+
+        idx += 1
+    return second_most
+
+
+def filter_agrd_chunk(config, chunk_instances, inactive_out_dir):
+    this_cwd = os.getcwd()
+    base_domain_name = config['base_domain_name']
+    domain_ext = config['domain_ext']
+
+    path_to_instance = {
+        os.path.join(
+            config['source_dir'],
+            filename
+        ): filename
+        for filename in chunk_instances
+    }
+    configs = generate_agrd_configs(path_to_instance.keys(), config['domain_type'], config['num_goals'])
+
+    os.chdir('../..')
+    results = distributed_execution(configs, this_cwd)
+    os.chdir(this_cwd)
+
+    successes_by_depth_bound = dict()
+    timeouts_by_depth_bound = dict()
+    for result in results:
+        result['depthUpperBound'] = get_depth_upper_bound(result)
+        instance_path = result["configuration"]["domainPath"]
+        if instance_path[0] != '.':
+            instance_path = '.' + instance_path
+
+        instance_filename = path_to_instance[instance_path]
+
+        if result['success'] and result.get('observerIsActive', 0) > 0:
+            print(f'Observer was active in domain {instance_path}')
+            get_with_default_list(successes_by_depth_bound, result['depthUpperBound'])\
+                .append((instance_path, instance_filename, base_domain_name, domain_ext))
+        else:
+            if result['success']:
+                print(f'Observer was inactive in domain {instance_path}')
+                move(instance_path, os.path.join(inactive_out_dir, instance_filename))
+            else:
+                err_msg = result["errorMessage"]
+                print(f'Failed to solve domain {instance_path} with error {err_msg}')
+
+                if err_msg.lower().find('timeout') > -1:
+                    get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound'])\
+                        .append((instance_path, instance_filename, base_domain_name, domain_ext))
+                else:
+                    move(instance_path, os.path.join(inactive_out_dir, instance_filename))
+
+    return successes_by_depth_bound, timeouts_by_depth_bound
+
+
+def move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_depth_bound):
+    """Moves successes to new directory, but only if all instances
+    at the relevant depth bound succeeded"""
+    # loop through timeouts first to purge successes dict
+    meta_files_by_out = dict()
+    for depth_bound, timeout_info in timeouts_info_by_depth_bound.items():
+        for out_dir, timeout_list in timeout_info.items():
+            print(f'Moving timeout instances at depth bound {depth_bound} for out dir {out_dir}')
+
+            timeout_dir = os.path.join(out_dir, 'timeout')
+            meta_file = get_with_default(
+                meta_files_by_out, out_dir,
+                default_producer=lambda: open(os.path.join(out_dir, 'stats.log'), 'w'))
+
+            success_info = get_with_default_dict(successes_info_by_depth_bound, depth_bound)
+            successes_list = get_with_default_list(success_info, out_dir)
+
+            meta_file.write(f'Depth Bound {depth_bound}: '
+                            f'{len(successes_list)} successes, {len(timeout_list)} timeouts\n')
+            for instance_path, instance_filename, _, _ in timeout_list + successes_list:
+                move(instance_path, os.path.join(timeout_dir, instance_filename))
+
+            success_info[out_dir] = []  # wipe the list so we don't write to success dir later
+
+    for file in meta_files_by_out.values():
+        file.write('\n=====================================\n\n')
+
+    success_indices = {}
+    for depth_bound, success_info in successes_info_by_depth_bound.items():
+        for out_dir, successes_list in success_info.items():
+            if len(successes_list) == 0:
+                continue
+
+            print(f'Moving successful instances at depth bound {depth_bound} for out dir {out_dir}')
+
+            meta_file = get_with_default(
+                meta_files_by_out, out_dir,
+                default_producer=lambda: open(os.path.join(out_dir, 'stats.log'), 'w'))
+
+            meta_file.write(f'Depth Bound {depth_bound}: {len(successes_list)} successes')
+
+            for instance_path, _, base_domain_name, domain_ext in successes_list:
+                prefix = os.path.join(out_dir, base_domain_name)
+                new_file_path = prefix + str(get_with_default(success_indices, prefix, 0)) + domain_ext
+                success_indices[prefix] += 1
+
+                move(instance_path, new_file_path)
+
+    for file in meta_files_by_out.values():
+        file.close()
+
+    success_index = 0
 
 
 def filter_active_observer(domain_configs, chunk_size=100):
@@ -104,25 +235,21 @@ def filter_active_observer(domain_configs, chunk_size=100):
         domain_ext: '.vw', '.logistics', etc
         out_dir: str of the output directory
     """
-    # TODO: Label stats on depth bound for succeeded and failed domains
-    distributed_execution = import_dist_ex()
-    this_cwd = os.getcwd()
-
+    successes_info_by_depth_bound = dict()
+    timeouts_info_by_depth_bound = dict()
     for config in domain_configs:
         base_domain_name = config['base_domain_name']
         domain_ext = config['domain_ext']
+        out_dir = config['out_dir']
 
         print(f'Filtering {base_domain_name} instances')
+        timeout_out_dir = os.path.join(out_dir, 'timeout')
+        if not os.path.exists(timeout_out_dir):
+            os.makedirs(timeout_out_dir)
 
-        active_out_dir = os.path.join(config['out_dir'], 'filtered')
-        if not os.path.exists(active_out_dir):
-            os.makedirs(active_out_dir)
-
-        inactive_out_dir = os.path.join(config['out_dir'], 'failed')
+        inactive_out_dir = os.path.join(out_dir, 'failed')
         if not os.path.exists(inactive_out_dir):
             os.makedirs(inactive_out_dir)
-
-        success_index = 0
 
         domain_instance_filenames = [
             base_domain_name + str(i) + domain_ext
@@ -131,82 +258,54 @@ def filter_active_observer(domain_configs, chunk_size=100):
 
         idx = 0
         while len(domain_instance_filenames) > idx:
+            # new_file_path = os.path.join(active_out_dir, base_domain_name + str(success_index) + domain_ext)
             chunk_instances = domain_instance_filenames[idx:idx + chunk_size]
-            path_to_instance = {
-                os.path.join(
-                    config['source_dir'],
-                    filename
-                ): filename
-                for filename in chunk_instances
-            }
-            configs = generate_agrd_configs(path_to_instance.keys(), config['domain_type'], config['num_goals'])
 
             print(f'Begin filtering {base_domain_name} {idx} through '
                   f'{min(idx + chunk_size - 1, len(domain_instance_filenames) - 1)}')
 
-            os.chdir('../..')
-            results = distributed_execution(configs, this_cwd)
-            os.chdir(this_cwd)
-
-            for result in results:
-                instance_path = result["configuration"]["domainPath"]
-                if instance_path[0] != '.':
-                    instance_path = '.' + instance_path
-
-                instance_filename = path_to_instance[instance_path]
-
-                if result['success'] and result.get('observerIsActive', 0) > 0:
-                    print(f'Observer was active in domain {instance_path}')
-                    new_file_path = os.path.join(active_out_dir, base_domain_name + str(success_index) + domain_ext)
-                    print(f'Outputting to {new_file_path}')
-
-                    move(instance_path, new_file_path)
-
-                    success_index += 1
-                else:
-                    if result['success']:
-                        print(f'Observer was inactive in domain {instance_path}')
-                    else:
-                        print(f'Failed to solve domain {instance_path} with error {result["errorMessage"]}')
-
-                    move(instance_path, os.path.join(inactive_out_dir, instance_filename))
+            tmp_successes, tmp_failures = filter_agrd_chunk(config, chunk_instances, inactive_out_dir)
+            for key, value in tmp_successes.items():
+                all_success_info = get_with_default_dict(successes_info_by_depth_bound, key)
+                group_success_list = get_with_default_list(all_success_info, out_dir)
+                group_success_list += value
+            for key, value in tmp_failures.items():
+                all_failure_info = get_with_default_dict(timeouts_info_by_depth_bound, key)
+                group_failure_list = get_with_default_list(all_failure_info, out_dir)
+                group_failure_list += value
 
             idx += chunk_size
+
+    move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_depth_bound)
 
 
 def run_filter_observer():
     """Used as scratch pad"""
-    log_config = {
-        'source_dir': './logistics',
-        'base_domain_name': 'geometric_0.4dist_3goal_15loc_3pkg_1trk_',
-        'num_instances': 2,
-        'num_goals': 3,
-        'domain_type': 'LOGISTICS',
-        'domain_ext': '.logistics',
-        'out_dir': './test/logistics'
-    }
-
-    # grid_config = {
-    #     'source_dir': './gridworld',
-    #     'base_domain_name': 'uniform7_7-',
+    # log_config = {
+    #     'source_dir': './logistics',
+    #     'base_domain_name': 'geometric_0.4dist_3goal_15loc_3pkg_1trk_',
     #     'num_instances': 2,
-    #     'num_goals': 2,
-    #     'domain_type': 'GRID_WORLD',
-    #     'domain_ext': '.vw',
-    #     'out_dir': './test/gridworld'
-    # }
-    #
-    # temp_config = {
-    #     'source_dir': './temp',
-    #     'base_domain_name': 'test-',
-    #     'num_instances': 1,
-    #     'num_goals': 2,
-    #     'domain_type': 'GRID_WORLD',
-    #     'domain_ext': '.vw',
-    #     'out_dir': './test/temp'
+    #     'num_goals': 3,
+    #     'domain_type': 'LOGISTICS',
+    #     'domain_ext': '.logistics',
+    #     'out_dir': './test/logistics'
     # }
 
-    filter_active_observer([log_config])
+    configs = []
+
+    for size in range(7,11):
+        for goals in range(2,5):
+            configs.append({
+                'source_dir': f'./gridworld/{goals}goal/filtered',
+                'base_domain_name': f'uniform{size}_{size}-',
+                'num_instances': 2,
+                'num_goals': goals,
+                'domain_type': 'GRID_WORLD',
+                'domain_ext': '.vw',
+                'out_dir': f'./test/uniform/{goals}goal'
+            })
+
+    filter_active_observer(configs)
 
 
 if __name__ == '__main__':
