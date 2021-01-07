@@ -3,6 +3,8 @@
 import os
 import sys
 from shutil import copyfile, move
+import argparse
+from glob import glob
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from Metronome import distributed_execution
@@ -279,8 +281,62 @@ def filter_active_observer(domain_configs, chunk_size=100):
     move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_depth_bound)
 
 
-def run_filter_observer():
-    """Used as scratch pad"""
+def run_filter_observer(args):
+    domain_identifier = args.domain_identifier
+
+    configs = []
+    if domain_identifier == 'uniform':
+        for size in range(7, 11):
+            base_domain_name = f'uniform{size}_{size}-'
+            for goals in range(2, 5):
+                dir_name = f'./gridworld/{goals}goal/filtered'
+                num_instances = len(glob(os.path.join(dir_name, base_domain_name) + '*'))
+
+                configs.append({
+                    'source_dir': dir_name,
+                    'base_domain_name': base_domain_name,
+                    'num_instances': num_instances,
+                    'num_goals': goals,
+                    'domain_type': 'GRID_WORLD',
+                    'domain_ext': '.vw',
+                    'out_dir': f'./agrd/uniform/{goals}goal'
+                })
+    elif domain_identifier == 'rooms':
+        for idx in range(10):
+            base_domain_name = f'64room_tiny_00{idx}-scn'
+            for goals in range(2, 5):
+                dir_name = f'./gridmap/{goals}goal/filtered'
+                num_instances = len(glob(os.path.join(dir_name, base_domain_name) + '*'))
+
+                configs.append({
+                    'source_dir': dir_name,
+                    'base_domain_name': base_domain_name,
+                    'num_instances': num_instances,
+                    'num_goals': goals,
+                    'domain_type': 'GRID_WORLD',
+                    'domain_ext': '.vw',
+                    'out_dir': f'./agrd/rooms/{goals}goal'
+                })
+    elif domain_identifier == 'logistics':
+        pass
+        for locs in range(10, 16):
+            for goals in range(2, 5):
+                base_domain_name = f'geometric_0.4dist_{goals}goal_{locs}loc_3pkg_1trk_'
+                dir_name = f'./logistics/{goals}goal'
+                num_instances = len(glob(os.path.join(dir_name, base_domain_name) + '*'))
+
+                configs.append({
+                    'source_dir': dir_name,
+                    'base_domain_name': base_domain_name,
+                    'num_instances': num_instances,
+                    'num_goals': goals,
+                    'domain_type': 'LOGISTICS',
+                    'domain_ext': '.logistics',
+                    'out_dir': f'./agrd/logistics/{goals}goal'
+                })
+    else:
+        raise Exception(f'Unknown domain identifier: {domain_identifier}')
+
     # log_config = {
     #     'source_dir': './logistics',
     #     'base_domain_name': 'geometric_0.4dist_3goal_15loc_3pkg_1trk_',
@@ -291,22 +347,16 @@ def run_filter_observer():
     #     'out_dir': './test/logistics'
     # }
 
-    configs = []
-
-    for size in range(7,11):
-        for goals in range(2,5):
-            configs.append({
-                'source_dir': f'./gridworld/{goals}goal/filtered',
-                'base_domain_name': f'uniform{size}_{size}-',
-                'num_instances': 2,
-                'num_goals': goals,
-                'domain_type': 'GRID_WORLD',
-                'domain_ext': '.vw',
-                'out_dir': f'./test/uniform/{goals}goal'
-            })
-
     filter_active_observer(configs)
 
 
 if __name__ == '__main__':
-    run_filter_observer()
+    parser = argparse.ArgumentParser(
+        description='Quick and dirty CLI for filtering AGRD instances by only '
+                    'those where the observer can actually do something. '
+                    'To use, edit the file')
+    # AS OF 1/6/20, valid options are 'logistics', 'rooms', 'uniform'
+    parser.add_argument('domain_identifier', type=str,
+                        help='String identifier for your set of domains.')
+
+    run_filter_observer(parser.parse_args())

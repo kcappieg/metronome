@@ -5,7 +5,7 @@ import argparse
 from math import floor, ceil
 import numpy as np
 from collections import deque
-from rand_seed import next_seed
+import rand_seed
 
 __author__ = 'Kevin C. Gall'
 
@@ -34,6 +34,9 @@ def main(args):
     np.random.seed(rand_seed.next_seed())
 
     out_path = args.path
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+
     verbose = args.verbose
 
     if verbose:
@@ -60,8 +63,6 @@ def main(args):
 
     fluent_choices = [i for i in range(1, goal_fluents+1)]
     for i in range(total):
-        np.random.seed(next_seed())
-
         # create network topology
         instance = f'Locations:{locations}\n'
         instance += network_builder.generate_network() + '\n'
@@ -141,8 +142,8 @@ class Network:
 
 
 class ClusterNetwork(Network):
-    def __init__(self, locations, density, clusters):
-        super().__init__(locations, density)
+    def __init__(self, locations, max_cost, density, clusters):
+        super().__init__(locations, max_cost, density)
         self._clusters = clusters
 
     def generate_base_network(self):
@@ -233,7 +234,7 @@ class GeometricNetwork:
 
     def generate_network(self):
         connected_network = None
-        for try_idx in range(10):
+        for try_idx in range(30):
             edge_lookup = self.get_geometric_graph()
 
             # run reachability search
