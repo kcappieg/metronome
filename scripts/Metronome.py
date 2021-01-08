@@ -16,8 +16,10 @@ ENABLE_SLACK_NOTIFICATION = False
 EXECUTE_REMOTE = False
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
+LOCAL_THREADS = 14  # Number of local threads if not executing on remote servers
+LOCAL_MACHINE_NAME = 'byodoin.cs.unh.edu'
 
-time_limit_seconds = 10 * 60
+time_limit_seconds = 10 * 60  # time limit for experiments
 
 
 def generate_base_configuration():
@@ -181,7 +183,7 @@ def distributed_execution(configurations, resource_dir=None):
     if EXECUTE_REMOTE:
         executor = create_remote_distlre_executor()
     else:
-        executor = create_local_distlre_executor(6)
+        executor = create_local_distlre_executor(LOCAL_THREADS)
 
     futures = []
     progress_bar = tqdm(total=len(configurations), smoothing=0.1)
@@ -218,7 +220,7 @@ def distributed_execution(configurations, resource_dir=None):
         if EXECUTE_REMOTE:
             machine = REMOTE_HOSTS
         else:
-            machine = 'local workstation'
+            machine = LOCAL_MACHINE_NAME
         start_experiment_notification(experiment_count=len(configurations), machine=machine)
     print('Experiments started')
     executor.execute_tasks()
