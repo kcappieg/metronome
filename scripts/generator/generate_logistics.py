@@ -25,6 +25,7 @@ def main(args):
     topology = args.topology
     clusters = args.clusters
     connection_distance = args.connection_distance
+    ignore_connection_errors = args.ignore_connection_errors
     max_cost = args.max_cost
     trucks = args.trucks
     packages = args.packages
@@ -61,11 +62,17 @@ def main(args):
 
     file_name += f'_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
 
-    fluent_choices = [i for i in range(1, goal_fluents+1)]
+    fluent_choices = [i for i in range(1, goal_fluents + 1)]
     for i in range(total):
         # create network topology
         instance = f'Locations:{locations}\n'
-        instance += network_builder.generate_network() + '\n'
+        try:
+            instance += network_builder.generate_network() + '\n'
+        except GeometricNetworkFailedException as ex:
+            if ignore_connection_errors:
+                continue
+            else:
+                raise ex
 
         # trucks
         instance += f'Trucks:{trucks}\n'
@@ -74,20 +81,36 @@ def main(args):
 
         # packages
         instance += f'\nPackages:{packages}\n'
+        # storing in a set for goal fluent checking
+        pkg_set = set()
         for pkgId in range(packages):
-            instance += f'{pkgId} {np.random.randint(0, locations)}\n'
+            pkg_set.add(f'{pkgId} {np.random.randint(0, locations)}')
+
+        instance += '\n'.join(pkg_set) + '\n'
 
         # goal hypotheses
         instance += '\nGoals:\n'
-        for _ in range(goals):
-            hyp = list()
-            # weighting 2-goal combos higher than others
+        goal_set = set()
+        while len(goal_set) < goals:
+            hyp = set()
             num_conditions = np.random.choice(fluent_choices)
 
-            for pkg in np.random.choice(packages, num_conditions, replace=False):
-                hyp.append(f'({pkg} {np.random.randint(0, locations)})')
+            pkgs = set()
+            while len(hyp) < num_conditions:
+                pkg = np.random.choice(packages)
+                # don't want to add 2 fluents for the same package!
+                if pkg in pkgs:
+                    continue
 
-            instance += ','.join(hyp) + '\n'
+                pkgs.add(pkg)
+                fluent = f'({pkg} {np.random.randint(0, locations)})'
+                if fluent in pkg_set:
+                    continue
+                hyp.add(fluent)
+
+            goal_set.add(','.join(hyp))
+
+        instance += '\n'.join(goal_set) + '\n'
 
         # observer
         instance += f'\nObserver:{np.random.randint(0, locations)}\n'
@@ -208,6 +231,10 @@ class CycleNetwork(Network):
         return network
 
 
+class GeometricNetworkFailedException(BaseException):
+    pass
+
+
 class GeometricNetwork:
     def __init__(self, locations, max_cost, connection_distance):
         self._num_locations = locations
@@ -260,8 +287,8 @@ class GeometricNetwork:
                     connected_network.add(edge)
 
         if connected_network is None:
-            raise Exception('Could not generate connected geometric graph with given distance. '
-                            'Try increasing connection distance')
+            raise GeometricNetworkFailedException('Could not generate connected geometric graph with given distance. '
+                                                  'Try increasing connection distance')
 
         network_desc = ''
         for edge in connected_network:
@@ -301,6 +328,10 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--connection-distance',
                         help='If topology is geometric, defines the connection distance between (0,1)',
                         type=float, default=0.2)
+    parser.add_argument('--ignore-connection-errors', action='store_true', default=False,
+                        help='If flag is passed, exceptions due to being unable to geometrically '
+                             'connect the graph are ignored and the graph is thrown out. '
+                             'Only applicable to --topology=geometric')
     parser.add_argument('-c', '--clusters', help='If topology is cluster, how many clusters to create',
                         type=int, default=1)
     parser.add_argument('-k', '--trucks', help='Number of trucks', type=int, default=1)

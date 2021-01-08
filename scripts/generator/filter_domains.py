@@ -46,8 +46,8 @@ def generate_agrd_configs(domain_paths, domain_type, goals):
         config['domainName'] = domain_type
         config['terminationType'] = 'EXPANSION'
         config['subjectAlgorithm'] = 'NAIVE_DYNAMIC'
-        config['timeLimit'] = 30000000000  # 30 second timeout
-        config['maxDepth'] = 1000,
+        config['timeLimit'] = 100000000000  # 100 second timeout
+        config['maxDepth'] = 1000
         config['goalPriors'] = [1 / goals for _ in range(goals)]
         config['subjectGoal'] = 0
         config['domainPath'] = domain_path_tmp
@@ -211,7 +211,7 @@ def move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_dep
                 meta_files_by_out, out_dir,
                 default_producer=lambda: open(os.path.join(out_dir, 'stats.log'), 'w'))
 
-            meta_file.write(f'Depth Bound {depth_bound}: {len(successes_list)} successes')
+            meta_file.write(f'Depth Bound {depth_bound}: {len(successes_list)} successes\n')
 
             for instance_path, _, base_domain_name, domain_ext in successes_list:
                 prefix = os.path.join(out_dir, base_domain_name)
@@ -319,7 +319,7 @@ def run_filter_observer(args):
                 })
     elif domain_identifier == 'logistics':
         pass
-        for locs in range(10, 16):
+        for locs in range(7, 12):
             for goals in range(2, 5):
                 base_domain_name = f'geometric_0.4dist_{goals}goal_{locs}loc_3pkg_1trk_'
                 dir_name = f'./logistics/{goals}goal'
