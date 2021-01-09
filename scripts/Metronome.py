@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+from glob import glob
 from subprocess import run
 from tqdm import tqdm
 import pandas as pd
@@ -96,24 +97,26 @@ def generate_agrd_configs():
     }
     priors_by_goal_count = {
         2: [0.5, 0.5],
-        3: [0.33, 0.33, 0.34],
+        3: [0.3333333, 0.3333333, 0.3333333],
         4: [0.25, 0.25, 0.25, 0.25]
     }
 
     # Build all domain paths
-    # uniform
-    for goal_count in range(2, 5):
-        base_path = f'vacuum/grd/uniform_{goal_count}goals/uniform'
-        for size in range(7, 12):
-            for scenario_num in range(30):
-                paths_by_goal_count[goal_count].append(f'{base_path}{size}_{size}-{scenario_num}.vw')
+    # Using glob, get all files in relevant directories
+    slice_from_beginning = len('./resources/input/')
 
-    # rooms
-    for goal_count in range(2, 5):
-        base_path = f'vacuum/grd/rooms_{goal_count}goals/64room_00'
-        for map_num in range(10):
-            for scenario_num in range(10):
-                paths_by_goal_count[goal_count].append(f'{base_path}{map_num}-scn{scenario_num}.vw')
+    for goal_count in range(2,5):
+        # uniform
+        paths_by_goal_count[goal_count] += [
+            instance_path[slice_from_beginning:]
+            for instance_path in glob(f'./resources/input/vacuum/grd/uniform/{goal_count}goal/*.vw')
+        ]
+
+        # rooms
+        paths_by_goal_count[goal_count] += [
+            instance_path[slice_from_beginning:]
+            for instance_path in glob(f'./resources/input/vacuum/grd/rooms/{goal_count}goal/*.vw')
+        ]
 
     configurations = []
     gw_configs = cartesian_product(base_configs, 'domainName',
@@ -134,11 +137,10 @@ def generate_agrd_configs():
 
     # logistics
     for goal_count in range(2, 5):
-        base_path10 = f'vacuum/grd/logistics_{goal_count}goals/geometric_0.4dist_{goal_count}goal_10loc_3pkg_1trk_'
-        base_path15 = f'vacuum/grd/logistics_{goal_count}goals/geometric_0.4dist_{goal_count}goal_15loc_3pkg_1trk_'
-        for scenario_num in range(15):
-            paths_by_goal_count[goal_count].append(f'{base_path10}{scenario_num}.logistics')
-            paths_by_goal_count[goal_count].append(f'{base_path15}{scenario_num}.logistics')
+        paths_by_goal_count[goal_count] += [
+            instance_path[slice_from_beginning:]
+            for instance_path in glob(f'./resources/input/logistics/{goal_count}goal/*.vw')
+        ]
 
     log_configs = cartesian_product(base_configs, 'domainName', ['LOGISTICS'])
     for goal_count in range(2, 5):

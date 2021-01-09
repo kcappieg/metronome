@@ -164,10 +164,10 @@ def filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_di
                 print(f'Failed to solve domain {instance_path} with error {err_msg}')
 
                 lower_err = err_msg.lower()
-                if lower_err.find('timeout') > -1:
+                if 'timeout' in lower_err:
                     get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound'])\
                         .append((instance_path, instance_filename, base_domain_name, domain_ext))
-                elif lower_err.find('dead end') > -1 or lower_err.find('subject transitioned') > -1:
+                elif 'dead end' in lower_err or 'subject transitioned' in lower_err:
                     # follow up on instances that fail for reasons that shouldn't happen...
                     move(instance_path, os.path.join(followup_out_dir, instance_filename))
                 else:
@@ -226,8 +226,6 @@ def move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_dep
 
     for file in meta_files_by_out.values():
         file.close()
-
-    success_index = 0
 
 
 def filter_active_observer(domain_configs, chunk_size=1000):
