@@ -226,7 +226,7 @@ def move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_dep
     success_index = 0
 
 
-def filter_active_observer(domain_configs, chunk_size=100):
+def filter_active_observer(domain_configs, chunk_size=1000):
     """Filter to only those where the observer is active.
     Dict schema:
         source_dir: str of the source directory

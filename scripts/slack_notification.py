@@ -9,7 +9,7 @@ def read_url():
         return url.readline()
 
 
-def start_experiment_notification(experiment_count=None, machine=None):
+def start_experiment_notification(experiment_count=None, machine=None, channel='#experiments'):
     user = getpass.getuser().capitalize()
     if experiment_count is None:
         message = user + ' just started running experiments.'
@@ -19,14 +19,14 @@ def start_experiment_notification(experiment_count=None, machine=None):
         else:
             message = '{user} just started running {experiment_count} experiments on {machine}'.format(user=user, experiment_count=experiment_count, machine=machine)
 
-    send_notification(message)
+    send_notification(message, channel=channel)
 
 
-def end_experiment_notification():
+def end_experiment_notification(channel='#experiments'):
     user = getpass.getuser().capitalize()
     message = user + "'s experiments just finished."
 
-    send_notification(message)
+    send_notification(message, channel=channel)
 
 
 def update_experiment_status(total_experiment_count, completed_experiment_count, remaining_minutes):

@@ -13,10 +13,12 @@ __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 # flags for changing script behavior
 ENABLE_SLACK_NOTIFICATION = False
+SLACK_CHANNEL = '#kevin-experiments'
+
 EXECUTE_REMOTE = False
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
-LOCAL_THREADS = 14  # Number of local threads if not executing on remote servers
+LOCAL_THREADS = 6  # Number of local threads if not executing on remote servers
 LOCAL_MACHINE_NAME = 'byodoin.cs.unh.edu'
 
 time_limit_seconds = 10 * 60  # time limit for experiments
@@ -221,7 +223,7 @@ def distributed_execution(configurations, resource_dir=None):
             machine = REMOTE_HOSTS
         else:
             machine = LOCAL_MACHINE_NAME
-        start_experiment_notification(experiment_count=len(configurations), machine=machine)
+        start_experiment_notification(experiment_count=len(configurations), machine=machine, channel=SLACK_CHANNEL)
     print('Experiments started')
     executor.execute_tasks()
 
@@ -230,7 +232,7 @@ def distributed_execution(configurations, resource_dir=None):
 
     print('Experiments finished')
     if ENABLE_SLACK_NOTIFICATION:
-        end_experiment_notification()
+        end_experiment_notification(channel=SLACK_CHANNEL)
 
     results = construct_results(futures)
 
