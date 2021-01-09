@@ -699,12 +699,14 @@ class Logistics {
     Cost minDistance = 0;
     for (size_t i = 0; i < numPkgs; i++) {
       size_t goalPkgLoc = underspecifiedState.pkgLocations[i];
-      if (goalPkgLoc == NULL_ID) {
-        continue; // not part of goal spec, so we ignore measures
+      size_t statePkgLoc = state.pkgLocations[i];
+
+      if (goalPkgLoc == NULL_ID or goalPkgLoc == statePkgLoc) {
+        continue; // not part of goal spec or already achieved, so we can ignore
       }
 
       // Package is in transit
-      if (state.pkgLocations[i] == NULL_ID) {
+      if (statePkgLoc == NULL_ID) {
         minDistance++;
         continue;
       }

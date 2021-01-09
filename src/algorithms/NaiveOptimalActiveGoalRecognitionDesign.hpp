@@ -27,7 +27,7 @@
 #include "experiment/termination/TimeTerminationChecker.hpp"
 
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 0
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 6
 
 namespace metronome {
   template<typename Domain>
@@ -633,7 +633,7 @@ namespace metronome {
       std::vector<ActionProbability> actionResults{};
 
       // special check for if this state is a goal - we say the subject
-      // will stay put and we assign the goals probability to it
+      // will stay put and we assign the goal's probability to it
       // This might happen if plans to other goals could pass through it
       if (domain->isGoal(simulatedStateNode->state)) {
         actionResults.emplace_back();

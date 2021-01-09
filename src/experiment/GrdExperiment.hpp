@@ -217,22 +217,25 @@ public:
 private:
   std::optional<TimeTerminationChecker> experimentTimeLimit;
 
-  const State getSubjectGoal(const Configuration& configuration, const Domain& domain) {
+  State getSubjectGoal(const Configuration& configuration, const Domain& domain) {
     const std::vector<State> goalVector = domain.getGoals();
 
     uint64_t goalIndex = 0;
+
+    if (not configuration.hasMember(GOAL_PRIORS)) {
+      throw MetronomeException("No goal priors specified");
+    }
+    auto goalPriors = configuration.getDoubles(GOAL_PRIORS);
+    verifyPriors(goalPriors, goalVector);
 
     if (configuration.hasMember(SUBJECT_GOAL)) {
       // explicit goal
       goalIndex = configuration.getLong(SUBJECT_GOAL);
 
-    } else if (configuration.hasMember(GOAL_PRIORS)) {
+    } else {
       // select subject goal from goal prior
       int64_t seed = configuration.getLong(SEED, 1);
       std::mt19937 rand(seed);
-
-      std::vector<double> goalPriors = configuration.getDoubles(GOAL_PRIORS);
-      verifyPriors(goalPriors, goalVector);
 
       std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
@@ -241,8 +244,6 @@ private:
       while (sum < num) {
         sum += goalPriors[++goalIndex];
       }
-    } else {
-      throw MetronomeException("No goal priors or explicit goal");
     }
 
     return goalVector[goalIndex];

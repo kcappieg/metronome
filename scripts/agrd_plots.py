@@ -14,18 +14,24 @@ from scripts.metronome_plot import construct_data_frame, read_data, remove_unuse
 
 __author__ = "Kevin C. Gall"
 
+PLOT_LOG = True
 
 def main(paths, configs):
     set_rc()
     idx = 0
     for config in configs:
         title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
+
+        print('\n========================================')
+        print(f'Domain {title}\n')
+
         data = prepare_data(paths, domain_filter)
         # plot_runtime(data, title, file_name)
         plot_scatter(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
+
     results = []
     for path_name in paths:
         results += read_data(path_name)
@@ -46,6 +52,7 @@ def prepare_data(paths, domain_filter):
 
     add_depth_upper_bound(data)
     add_num_goals(data)
+
     print(f'Completed instances: {len(data)}')
     # remove depth=0. Could happen if instance starts in goal configuration
     # such instances should be filtered out of experiments... but bandaid here instead
@@ -55,6 +62,8 @@ def prepare_data(paths, domain_filter):
     # rescale runtime to ms
     data['firstIterationRuntime_ms'] = data['firstIterationRuntime'] / 1000000
     data['logRuntime'] = np.log(data['firstIterationRuntime_ms'])
+
+    data['runtime_axis'] = data['logRuntime'] if PLOT_LOG else data['firstIterationRuntime_ms']
 
     return data
 
@@ -86,14 +95,9 @@ def add_num_goals(data):
 
 
 def plot_runtime(data, title, file_name):
-    plot_log = True
-
     results = DataFrame(
         columns="depthUpperBound runtime algorithmName lbound rbound numInstances".split()
     )
-
-    if plot_log:
-        data['runtime_axis'] = data['logRuntime']
 
     # average runtime for all instances that share a depth bound
     for fields, depth_group in data.groupby(['algorithmName', 'depthUpperBound']):
@@ -120,7 +124,7 @@ def plot_runtime(data, title, file_name):
         errors.append([alg_group['lbound'].values, alg_group['rbound'].values])
 
     pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
-                          values="runtime_axis")
+                          values="runtime")
     pivot = pivot[~pivot.index.duplicated(keep='first')]
 
     palette = sns.color_palette(n_colors=10)
@@ -129,7 +133,7 @@ def plot_runtime(data, title, file_name):
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1)
 
-    if plot_log:
+    if PLOT_LOG:
         set_log_ticks(plot)
 
     instances_pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
@@ -150,7 +154,7 @@ def plot_scatter(data, title, file_name):
     plt_title = 'Runtime Scatter' if title is None else title
 
     plot = data.plot.scatter(title=plt_title, legend=True,
-                             x='depthUpperBound', y='logRuntime',
+                             x='depthUpperBound', y='runtime_axis',
                              c='numGoals', colormap='Accent')
 
     plot.set_xlabel('Depth Upper Bound')
@@ -159,7 +163,8 @@ def plot_scatter(data, title, file_name):
     xticks = [depth for depth in range(int(data.depthUpperBound.max()))]
     plot.set_xticks(xticks)
 
-    set_log_ticks(plot)
+    if PLOT_LOG:
+        set_log_ticks(plot)
 
     # TODO: save plot to pdf
 
@@ -178,22 +183,22 @@ def set_log_ticks(plot):
 
 
 if __name__ == "__main__":
-    main(['../results/grd-12-28-20.json'],
+    main(['../results/grd-rooms-uniform-1-9-20.json'],
          [
-             # {
-             #     'title': 'Uniform Gridworld',
-             #     'file_name': 'uniform',
-             #     'domain_filter': 'grd/uniform'
-             # },
-             # {
-             #     'title': 'Rooms Gridworld',
-             #     'file_name': 'rooms',
-             #     'domain_filter': 'grd/rooms'
-             # },
              {
-                 'title': 'Logistics',
-                 'file_name': 'logistics',
-                 'domain_filter': 'grd/logistics'
+                 'title': 'Uniform Gridworld',
+                 'file_name': 'uniform',
+                 'domain_filter': 'grd/uniform'
+             },
+             {
+                 'title': 'Rooms Gridworld',
+                 'file_name': 'rooms',
+                 'domain_filter': 'grd/rooms'
+             # },
+             # {
+             #     'title': 'Logistics',
+             #     'file_name': 'logistics',
+             #     'domain_filter': 'grd/logistics'
              # },
              # {
              #     'title': 'Optimal AGRD Complexity',
