@@ -123,7 +123,7 @@ def get_depth_upper_bound(result):
     return second_most
 
 
-def filter_agrd_chunk(config, chunk_instances, inactive_out_dir):
+def filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_dir):
     this_cwd = os.getcwd()
     base_domain_name = config['base_domain_name']
     domain_ext = config['domain_ext']
@@ -163,9 +163,13 @@ def filter_agrd_chunk(config, chunk_instances, inactive_out_dir):
                 err_msg = result["errorMessage"]
                 print(f'Failed to solve domain {instance_path} with error {err_msg}')
 
-                if err_msg.lower().find('timeout') > -1:
+                lower_err = err_msg.lower()
+                if lower_err.find('timeout') > -1:
                     get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound'])\
                         .append((instance_path, instance_filename, base_domain_name, domain_ext))
+                elif lower_err.find('dead end') > -1 or lower_err.find('subject transitioned') > -1:
+                    # follow up on instances that fail for reasons that shouldn't happen...
+                    move(instance_path, os.path.join(followup_out_dir, instance_filename))
                 else:
                     move(instance_path, os.path.join(inactive_out_dir, instance_filename))
 
@@ -253,6 +257,10 @@ def filter_active_observer(domain_configs, chunk_size=1000):
         if not os.path.exists(inactive_out_dir):
             os.makedirs(inactive_out_dir)
 
+        followup_out_dir = os.path.join(out_dir, 'follow-up')
+        if not os.path.exists(followup_out_dir):
+            os.makedirs(followup_out_dir)
+
         domain_instance_filenames = [
             base_domain_name + str(i) + domain_ext
             for i in range(config['num_instances'])
@@ -266,7 +274,7 @@ def filter_active_observer(domain_configs, chunk_size=1000):
             print(f'Begin filtering {base_domain_name} {idx} through '
                   f'{min(idx + chunk_size - 1, len(domain_instance_filenames) - 1)}')
 
-            tmp_successes, tmp_failures = filter_agrd_chunk(config, chunk_instances, inactive_out_dir)
+            tmp_successes, tmp_failures = filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_dir)
             for key, value in tmp_successes.items():
                 all_success_info = get_with_default_dict(successes_info_by_depth_bound, key)
                 group_success_list = get_with_default_list(all_success_info, out_dir)
