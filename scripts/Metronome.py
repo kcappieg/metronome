@@ -139,7 +139,7 @@ def generate_agrd_configs():
     for goal_count in range(2, 5):
         paths_by_goal_count[goal_count] += [
             instance_path[slice_from_beginning:]
-            for instance_path in glob(f'./resources/input/logistics/{goal_count}goal/*.vw')
+            for instance_path in glob(f'./resources/input/logistics/{goal_count}goal/*.logistics')
         ]
 
     log_configs = cartesian_product(base_configs, 'domainName', ['LOGISTICS'])

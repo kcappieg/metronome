@@ -20,6 +20,7 @@
 #include "utils/Hash.hpp"
 #include "utils/ObjectPool.hpp"
 #include <MemoryConfiguration.hpp>
+#include <utility>
 #include "utils/PriorityQueue.hpp"
 #include "planner_tools/Comparators.hpp"
 #include "domains/SuccessorBundle.hpp"
@@ -30,6 +31,11 @@
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 6
 
 namespace metronome {
+  class RecomputeOptimalException : public MetronomeException {
+   public:
+    explicit RecomputeOptimalException(std::string msg) : MetronomeException(std::move(msg)) {}
+  };
+
   template<typename Domain>
   class NaiveOptimalActiveGoalRecognitionDesign final : public GoalRecognitionDesignPlanner<Domain> {
   public:
@@ -108,7 +114,7 @@ namespace metronome {
       }
 
       InterventionTrialResult trialResult = interventionTrial(
-          nodes[subjectState], nodes[subjectState]);
+          nodes[subjectState]);
       std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
       potentialOutcomes = trialResult.potentialSubjectActionOutcomes;
 
@@ -158,8 +164,8 @@ namespace metronome {
     // Search Node
     struct Node {
     public:
-      Node(const State& state, Cost g, Cost h, unsigned int iteration)
-              : state(state), g(g), h(h), iteration{iteration} {
+      Node(State state, Cost g, Cost h, unsigned int iteration)
+              : state(std::move(state)), g(g), h(h), iteration{iteration} {
         goalBackupIteration = 0;
       }
 
@@ -187,7 +193,7 @@ namespace metronome {
       unsigned int iteration;
       unsigned int goalBackupIteration;
 
-      std::string toString() {
+      std::string toString() const {
         std::ostringstream stream;
         stream << "State: " << state << "; g: " << g << "; Iteration: " << iteration;
 
@@ -316,6 +322,9 @@ namespace metronome {
 
             goalSpecToConcrete[goal] = {};
             goalsToOptimalCost.insert({goal, top->g});
+            if (top->g == 0) {
+              throw MetronomeException("Invalid AGRD problem: A possible goal is the start state.");
+            }
           }
 
           // it is possible we are seeing this goal again later, i.e. with
@@ -342,7 +351,7 @@ namespace metronome {
       }
 
       if (goalsLeft != 0) {
-        throw MetronomeException("Not all goals discovered from subject's current state. Dead end!");
+        throw RecomputeOptimalException("Not all goals discovered from subject's current state. Dead end!");
       }
 
       openList.clear();
@@ -377,7 +386,7 @@ namespace metronome {
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
     InterventionTrialResult interventionTrial(
-            Node* simulatedStateNode, Node* subjectCurrentStateNode) {
+            Node* simulatedStateNode) {
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
         double g = static_cast<double>(simulatedStateNode->g);
@@ -404,9 +413,15 @@ namespace metronome {
       depth++;
 
       InterventionTrialResult trialResult{0.0, {}, {}};
-      // cache g and goals for re-computing optimal plans
-      Cost subjectCurrentG = subjectCurrentStateNode->g;
-      auto subjectCurrentGoalsToPlanCount = subjectCurrentStateNode->goalsToPlanCount;
+
+      // Caching information so that we can restore it at the end of each trial
+
+      // This is set every time we call recompute optimal info, but if we
+      // don't invoke that method then it could still be out of sync
+      auto goalsToOptimalCostRestore = goalsToOptimalCost;
+      // cache g and goals so that we can restore it after each trial
+      Cost simulatedGRestore = simulatedStateNode->g;
+      auto simulatedCurrentGoalsToPlanCountRestore = simulatedStateNode->goalsToPlanCount;
 
       std::vector<InterventionBundle<Domain>> interventions;
       if (identityTrial) {
@@ -462,7 +477,7 @@ namespace metronome {
           bool invalidIntervention = false;
           try {
             recomputeOptimalInfo(simulatedStateNode->state);
-          } catch (MetronomeException& mex) {
+          } catch (RecomputeOptimalException& ex) {
             // made a goal unreachable
             invalidIntervention = true;
           }
@@ -489,9 +504,17 @@ namespace metronome {
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
             // reset g and goals to plan count for recomputing optimal plans
-            subjectCurrentStateNode->g = subjectCurrentG;
-            subjectCurrentStateNode->goalsToPlanCount = subjectCurrentGoalsToPlanCount;
-            recomputeOptimalInfo(subjectCurrentStateNode->state);
+            simulatedStateNode->g = simulatedGRestore;
+            simulatedStateNode->goalsToPlanCount =
+                simulatedCurrentGoalsToPlanCountRestore;
+            try {
+              recomputeOptimalInfo(simulatedStateNode->state);
+            } catch (RecomputeOptimalException& rex) {
+              // giving me a breakpoint for debug
+              throw rex;
+            }
+            // restore in case it is different
+            goalsToOptimalCost = goalsToOptimalCostRestore;
             continue;
           }
         }
@@ -499,7 +522,7 @@ namespace metronome {
 
         // descend
         ActionTrialResult actionTrialResult = actionTrial(
-            simulatedStateNode, subjectCurrentStateNode);
+            simulatedStateNode);
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
         if (depth <= NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH) {
@@ -525,11 +548,22 @@ namespace metronome {
 
         // reverse patch, repair optimal info
         domain->reversePatch(domainPatch, simulatedStateNode->state);
-        if (domainPatch.affectedStates.size() > 0) {
-          // reset g for recomputing optimal plans
-          subjectCurrentStateNode->g = subjectCurrentG;
-          recomputeOptimalInfo(subjectCurrentStateNode->state);
+        // reset g and goals to plan count for simulated state.
+        // could be affected by searches deeper in the tree, so this needs
+        // to be reset after every trial
+        simulatedStateNode->g = simulatedGRestore;
+        simulatedStateNode->goalsToPlanCount =
+            simulatedCurrentGoalsToPlanCountRestore;
+
+        // always recompute :(
+        // doesn't work otherwise, there are too many edge cases
+        try {
+          recomputeOptimalInfo(simulatedStateNode->state);
+        } catch (RecomputeOptimalException& rex) {
+          // breakpoint for debug
+          throw rex;
         }
+        goalsToOptimalCost = goalsToOptimalCostRestore;
         if (identityTrialStart) {
           identityTrial = false;
         }
@@ -543,7 +577,7 @@ namespace metronome {
       return trialResult;
     }
 
-    ActionTrialResult actionTrial(Node* simulatedStateNode, Node* subjectCurrentStateNode) {
+    ActionTrialResult actionTrial(Node* simulatedStateNode) {
       // sigma
       if (simulatedStateNode->goalsToPlanCount.size() == 1) {
         auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
@@ -585,7 +619,7 @@ namespace metronome {
         } else {
           // copy-assign
           goalsToPriors = actionResults.conditionedGoalPriors;
-          actionScore = interventionTrial(successor, subjectCurrentStateNode).score;
+          actionScore = interventionTrial(successor).score;
         }
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
@@ -636,19 +670,29 @@ namespace metronome {
       // will stay put and we assign the goal's probability to it
       // This might happen if plans to other goals could pass through it
       if (domain->isGoal(simulatedStateNode->state)) {
-        actionResults.emplace_back();
-        ActionProbability& actionResult = actionResults.back();
+        ActionProbability actionResult{};
         actionResult.successor = simulatedStateNode;
 
+        // need this found check in case of underspecified goals.
+        // If a large number of states match goal condition, but we've already
+        // eliminated that goal, this would cause problems
+        bool found = false;
         for (auto& entry : conditionedGoalsToPriors) {
           // if this is the goal, it has probability one. The action has
           // probability equal to the prior
-          if (domain->isGoal(simulatedStateNode->state, entry.first)) {
+          if (domain->isGoal(simulatedStateNode->state, entry.first)
+              and entry.second > 0.0) {
+            found = true;
+
             actionResult.conditionedGoalPriors[entry.first] = 1.0;
             actionResult.probabilityOfAction = entry.second;
           } else {
             actionResult.conditionedGoalPriors[entry.first] = 0.0;
           }
+        }
+
+        if (found) {
+          actionResults.push_back(std::move(actionResult));
         }
       }
 
