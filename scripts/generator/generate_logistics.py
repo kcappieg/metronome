@@ -62,6 +62,8 @@ def main(args):
 
     file_name += f'_{goals}goal_{locations}loc_{packages}pkg_{trucks}trk'
 
+    # possible to not be able to generate network. We want to keep consistent numbering
+    instance_idx = 0
     fluent_choices = [i for i in range(1, goal_fluents + 1)]
     for i in range(total):
         # create network topology
@@ -115,7 +117,8 @@ def main(args):
         # observer
         instance += f'\nObserver:{np.random.randint(0, locations)}\n'
 
-        full_file_path = os.path.join(out_path, f'{file_name}_{i}.logistics')
+        full_file_path = os.path.join(out_path, f'{file_name}_{instance_idx}.logistics')
+        instance_idx += 1
         with open(full_file_path, 'w') as file:
             file.write(instance)
 

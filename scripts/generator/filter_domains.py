@@ -46,7 +46,7 @@ def generate_agrd_configs(domain_paths, domain_type, goals):
         config['domainName'] = domain_type
         config['terminationType'] = 'EXPANSION'
         config['subjectAlgorithm'] = 'NAIVE_DYNAMIC'
-        config['timeLimit'] = 100000000000  # 100 second timeout
+        config['timeLimit'] = 300_000_000_000  # 300 second (5 min) timeout
         config['maxDepth'] = 1000
         config['goalPriors'] = [1 / goals for _ in range(goals)]
         config['subjectGoal'] = 0
