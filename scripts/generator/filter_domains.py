@@ -245,6 +245,9 @@ def filter_active_observer(domain_configs, chunk_size=1000):
         base_domain_name = config['base_domain_name']
         domain_ext = config['domain_ext']
         out_dir = config['out_dir']
+        src_dir = config['source_dir']
+        if src_dir[-1] != '/':
+            src_dir += '/'
 
         print(f'Filtering {base_domain_name} instances')
         timeout_out_dir = os.path.join(out_dir, 'timeout')
@@ -260,8 +263,8 @@ def filter_active_observer(domain_configs, chunk_size=1000):
             os.makedirs(followup_out_dir)
 
         domain_instance_filenames = [
-            base_domain_name + str(i) + domain_ext
-            for i in range(config['num_instances'])
+            filepath[len(src_dir):]
+            for filepath in glob(src_dir + base_domain_name + '*' + domain_ext)
         ]
 
         idx = 0
