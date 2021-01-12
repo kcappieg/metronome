@@ -153,7 +153,7 @@ def filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_di
 
         if result['success'] and result.get('observerIsActive', 0) > 0:
             print(f'Observer was active in domain {instance_path}')
-            get_with_default_list(successes_by_depth_bound, result['depthUpperBound']) \
+            get_with_default_list(successes_by_depth_bound, result['depthUpperBound'])\
                 .append((instance_path, instance_filename, base_domain_name, domain_ext))
         else:
             if result['success']:
@@ -165,7 +165,7 @@ def filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_di
 
                 lower_err = err_msg.lower()
                 if 'timeout' in lower_err:
-                    get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound']) \
+                    get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound'])\
                         .append((instance_path, instance_filename, base_domain_name, domain_ext))
                 elif 'dead end' in lower_err or 'subject transitioned' in lower_err:
                     # follow up on instances that fail for reasons that shouldn't happen...
@@ -243,10 +243,8 @@ def filter_active_observer(domain_configs, chunk_size=1000):
     timeouts_info_by_depth_bound = dict()
     for config in domain_configs:
         base_domain_name = config['base_domain_name']
+        domain_ext = config['domain_ext']
         out_dir = config['out_dir']
-        src_dir = config['source_dir']
-        if src_dir[-1] != '/':
-            src_dir += '/'
 
         print(f'Filtering {base_domain_name} instances')
         timeout_out_dir = os.path.join(out_dir, 'timeout')
@@ -262,8 +260,8 @@ def filter_active_observer(domain_configs, chunk_size=1000):
             os.makedirs(followup_out_dir)
 
         domain_instance_filenames = [
-            filepath[len(src_dir):]
-            for filepath in glob(src_dir + '*.logistics')
+            base_domain_name + str(i) + domain_ext
+            for i in range(config['num_instances'])
         ]
 
         idx = 0
