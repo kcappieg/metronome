@@ -727,6 +727,10 @@ namespace metronome {
           assert(actionResult.conditionedGoalPriors.count(hypothesisEntry.first) == 1);
           assert(conditionedGoalsToPriors.count(hypothesisEntry.first) == 1);
 
+          if (simulatedStateNode->goalsToPlanCount[hypothesisEntry.first] == 0) {
+            continue; // should be pruned
+          }
+
           /** calculates the fraction of plans to this goal that pass through this action */
           double fractionOfPlansForGoal =
               (double)hypothesisEntry.second /

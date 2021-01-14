@@ -16,6 +16,7 @@ __author__ = "Kevin C. Gall"
 
 PLOT_LOG = True
 
+
 def main(paths, configs):
     set_rc()
     idx = 0
@@ -31,7 +32,6 @@ def main(paths, configs):
 
 
 def prepare_data(paths, domain_filter):
-
     results = []
     for path_name in paths:
         results += read_data(path_name)
@@ -129,7 +129,7 @@ def plot_runtime(data, title, file_name):
 
     palette = sns.color_palette(n_colors=10)
     plt_title = 'Optimal AGRD Complexity' + ('' if title is None else ' - ' + title)
-    plot = pivot.plot(color=palette, title=plt_title, legend=True, yerr=errors,
+    plot = pivot.plot(color=palette, title=plt_title, legend=False, yerr=errors,
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1)
 
@@ -151,29 +151,47 @@ def plot_runtime(data, title, file_name):
 
 
 def plot_scatter(data, title, file_name):
+    fig, ax = plt.subplots()
+
     plt_title = 'Runtime Scatter' if title is None else title
 
-    plot = data.plot.scatter(title=plt_title, legend=True,
-                             x='depthUpperBound', y='runtime_axis',
-                             c='numGoals', colormap='Accent')
+    colors = sns.color_palette('dark', len(data.numGoals.unique()))
+    color_map = dict(zip(data.numGoals.unique(), colors))
 
-    plot.set_xlabel('Depth Upper Bound')
-    plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
+    results = DataFrame(
+        columns="depthUpperBound avg_runtime numGoals instances".split()
+    )
 
-    xticks = [depth for depth in range(int(data.depthUpperBound.max()))]
-    plot.set_xticks(xticks)
+    for fields, group in data.groupby(['numGoals', 'depthUpperBound']):
+        results = add_row(results, [
+            fields[1], group.runtime_axis.mean(), int(fields[0]), len(group)
+        ])
+
+    for key, group in results.groupby('numGoals'):
+        group.plot.scatter(ax=ax, s=group.instances * 10,  # bubble size
+                           alpha=0.5,
+                           x='depthUpperBound', y='avg_runtime',
+                           label=key, color=color_map[key])
+
+    ax.set_title(plt_title)
+    ax.set_xlabel('Depth Upper Bound')
+    ax.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
+
+    ax.legend(title='Goal Count')
+
+    xticks = [depth for depth in range(1, int(data.depthUpperBound.max() + 1))]
+    ax.set_xticks(xticks)
 
     if PLOT_LOG:
-        set_log_ticks(plot)
+        set_log_ticks(ax, 4)
 
     # TODO: save plot to pdf
 
     plt.show()
 
 
-def set_log_ticks(plot):
+def set_log_ticks(plot, num_levels_zero_above=5):
     num_levels_below_zero = 1
-    num_levels_zero_above = 8
 
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
     ticks += [10 ** num for num in range(num_levels_zero_above)]
@@ -194,15 +212,15 @@ if __name__ == "__main__":
                  'title': 'Rooms Gridworld',
                  'file_name': 'rooms',
                  'domain_filter': 'grd/rooms'
-             # },
-             # {
-             #     'title': 'Logistics',
-             #     'file_name': 'logistics',
-             #     'domain_filter': 'grd/logistics'
-             # },
-             # {
-             #     'title': 'Optimal AGRD Complexity',
-             #     'file_name': 'all',
-             #     'domain_filter': None
+                 # },
+                 # {
+                 #     'title': 'Logistics',
+                 #     'file_name': 'logistics',
+                 #     'domain_filter': 'grd/logistics'
+                 # },
+                 # {
+                 #     'title': 'Optimal AGRD Complexity',
+                 #     'file_name': 'all',
+                 #     'domain_filter': None
              }
          ])
