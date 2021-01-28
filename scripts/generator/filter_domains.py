@@ -46,7 +46,7 @@ def generate_agrd_configs(domain_paths, domain_type, goals):
         config['domainName'] = domain_type
         config['terminationType'] = 'EXPANSION'
         config['subjectAlgorithm'] = 'NAIVE_DYNAMIC'
-        config['timeLimit'] = 300_000_000_000  # 300 second (5 min) timeout
+        config['timeLimit'] = 900_000_000_000  # 900 second (15 min) timeout
         config['maxDepth'] = 1000
         config['goalPriors'] = [1 / goals for _ in range(goals)]
         config['subjectGoal'] = 0
@@ -167,7 +167,7 @@ def filter_agrd_chunk(config, chunk_instances, inactive_out_dir, followup_out_di
                 if 'timeout' in lower_err:
                     get_with_default_list(timeouts_by_depth_bound, result['depthUpperBound'])\
                         .append((instance_path, instance_filename, base_domain_name, domain_ext))
-                elif 'dead end' in lower_err or 'subject transitioned' in lower_err:
+                elif 'dead end' in lower_err or 'subject transitioned' in lower_err or 'follow-up' in lower_err:
                     # follow up on instances that fail for reasons that shouldn't happen...
                     move(instance_path, os.path.join(followup_out_dir, instance_filename))
                 else:
@@ -329,7 +329,9 @@ def run_filter_observer(args):
     elif domain_identifier == 'logistics':
         pass
         for locs in range(7, 12):
+        # for locs in range(9, 10):
             for goals in range(2, 5):
+            # for goals in range(4, 5):
                 base_domain_name = f'geometric_0.4dist_{goals}goal_{locs}loc_3pkg_1trk_'
                 dir_name = f'./logistics/{goals}goal'
                 num_instances = len(glob(os.path.join(dir_name, base_domain_name) + '*'))
@@ -342,6 +344,7 @@ def run_filter_observer(args):
                     'domain_type': 'LOGISTICS',
                     'domain_ext': '.logistics',
                     'out_dir': f'./agrd/logistics/{goals}goal'
+                    # 'out_dir': f'./temp/logistics/{goals}goal'
                 })
     else:
         raise Exception(f'Unknown domain identifier: {domain_identifier}')
@@ -356,7 +359,7 @@ def run_filter_observer(args):
     #     'out_dir': './test/logistics'
     # }
 
-    filter_active_observer(configs)
+    filter_active_observer(configs, 1000)
 
 
 if __name__ == '__main__':
