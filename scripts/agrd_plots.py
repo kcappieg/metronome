@@ -27,8 +27,8 @@ def main(paths, configs):
         print(f'Domain {title}\n')
 
         data = prepare_data(paths, domain_filter)
-        # plot_runtime(data, title, file_name)
-        plot_scatter(data, title, file_name)
+        plot_runtime(data, title, file_name)
+        # plot_scatter(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
@@ -57,6 +57,10 @@ def prepare_data(paths, domain_filter):
     # remove depth=0. Could happen if instance starts in goal configuration
     # such instances should be filtered out of experiments... but bandaid here instead
     data = data[data.depthUpperBound > 0]
+    # remove depth>6. This is b/c no grid world could complete depth >= 6 without timing out
+    # some instances
+    data = data[data.depthUpperBound < 6]
+
     print(f'Valid completed instances: {len(data)}')
 
     # rescale runtime to ms
@@ -84,7 +88,7 @@ def add_depth_upper_bound(data):
 
             idx += 1
 
-        depth_bound_values.append(second_most)
+        depth_bound_values.append(int(second_most))
 
     data['depthUpperBound'] = depth_bound_values
 
@@ -128,13 +132,17 @@ def plot_runtime(data, title, file_name):
     pivot = pivot[~pivot.index.duplicated(keep='first')]
 
     palette = sns.color_palette(n_colors=10)
-    plt_title = 'Optimal AGRD Complexity' + ('' if title is None else ' - ' + title)
+    # plt_title = 'Optimal AGRD Complexity' + ('' if title is None else ' - ' + title)
+    plt_title = title
     plot = pivot.plot(color=palette, title=plt_title, legend=False, yerr=errors,
                       ecolor='black', elinewidth=1,
-                      capsize=4, capthick=1)
+                      capsize=4, capthick=1,
+                      figsize=(3, 3))
 
     if PLOT_LOG:
-        set_log_ticks(plot)
+        set_log_y_ticks(plot, 3)
+
+    set_x_ticks(plot, data, 'depthUpperBound')
 
     instances_pivot = results.pivot(index="depthUpperBound", columns="algorithmName",
                                     values="numInstances")
@@ -144,13 +152,17 @@ def plot_runtime(data, title, file_name):
     plot.set_xlabel('Depth Upper Bound')
     plot.set_ylabel('Runtime to Exhaustively Explore Tree (ms)')
 
+    # plt.subplots_adjust(left=.3, bottom=.3)
+
     pdf = PdfPages("../results/plots/" + file_name + "_agrd_runtime.pdf")
-    plt.savefig(pdf, format='pdf')
+    plt.savefig(pdf, format='pdf', bbox_inches='tight')
     pdf.close()
-    # plt.show()
+    plt.show()
 
 
 def plot_scatter(data, title, file_name):
+    # TODO: Bar plot w/ confidence. Depth is category, num goals is category that creates bars
+    # y is avg runtime, confidence over that should hopefully overlap
     fig, ax = plt.subplots()
 
     plt_title = 'Runtime Scatter' if title is None else title
@@ -179,18 +191,17 @@ def plot_scatter(data, title, file_name):
 
     ax.legend(title='Goal Count')
 
-    xticks = [depth for depth in range(1, int(data.depthUpperBound.max() + 1))]
-    ax.set_xticks(xticks)
+    set_x_ticks(ax, data, 'depthUpperBound')
 
     if PLOT_LOG:
-        set_log_ticks(ax, 4)
+        set_log_y_ticks(ax, 3)
 
     # TODO: save plot to pdf
 
     plt.show()
 
 
-def set_log_ticks(plot, num_levels_zero_above=5):
+def set_log_y_ticks(plot, num_levels_zero_above=5):
     num_levels_below_zero = 1
 
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
@@ -198,6 +209,12 @@ def set_log_ticks(plot, num_levels_zero_above=5):
 
     plot.set_yticks(np.log(ticks))
     plot.set_yticklabels([num if num < 10000 else f'{num:.1g}' for num in ticks])
+
+
+def set_x_ticks(plot, data, field_name):
+    xticks = [x_val for x_val in range(1, int(data[field_name].max() + 1))]
+    plot.set_xticks(xticks)
+    plot.set_xlim(xticks[0] - 0.3, xticks[len(xticks) - 1] + 0.3)
 
 
 if __name__ == "__main__":

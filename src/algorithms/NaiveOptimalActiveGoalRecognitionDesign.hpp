@@ -383,19 +383,44 @@ namespace metronome {
       openList.clear();
     }
 
-    // Recursion - all going on the stack. Might become stack overflow - watch for this
+    /**
+     * If node is a leaf, get its value. Otherwise return empty optional
+     * @param simulatedStateNode
+     * @return
+     */
+    std::optional<double> getValueIfLeaf(Node* simulatedStateNode) {
+      std::vector<typename std::unordered_map<State, Cost, StateHash>::value_type> goalsWithPlans{};
+      // Filter out map entries to just those with > 0 plan counts
+      std::copy_if(simulatedStateNode->goalsToPlanCount.cbegin(),
+                   simulatedStateNode->goalsToPlanCount.cend(),
+                   std::back_inserter(goalsWithPlans),
+                   [](const auto& mapVal) {
+                     return mapVal.second > 0;
+                   });
 
-    InterventionTrialResult interventionTrial(
-            Node* simulatedStateNode) {
-      if (simulatedStateNode->goalsToPlanCount.size() == 1) {
-        auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
+      if (goalsWithPlans.size() == 1) {
+        auto goalState = goalsWithPlans[0].first;
         double g = static_cast<double>(simulatedStateNode->g);
         if (goalsToOptimalCost.count(goalState) == 0) {
           throw MetronomeException("Bug in goal plan count");
         }
         double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
         // reaction time
-        return {cStar - g, {}, {}};
+        return {cStar - g};
+      } else if (goalsWithPlans.size() == 0) {
+        throw MetronomeException("Bug in search - goals to plan count had no goals with plans");
+      } else {
+        return {};
+      }
+    }
+
+    // Recursion - all going on the stack. Might become stack overflow - watch for this
+
+    InterventionTrialResult interventionTrial(
+            Node* simulatedStateNode) {
+      const auto nodeValue = getValueIfLeaf(simulatedStateNode);
+      if (nodeValue) {
+        return {nodeValue.value(), {}, {}};
       }
 
       // only check every 200 nodes of the DFS
@@ -578,16 +603,9 @@ namespace metronome {
     }
 
     ActionTrialResult actionTrial(Node* simulatedStateNode) {
-      // sigma
-      if (simulatedStateNode->goalsToPlanCount.size() == 1) {
-        auto goalState = simulatedStateNode->goalsToPlanCount.cbegin()->first;
-        auto g = static_cast<double>(simulatedStateNode->g);
-        if (goalsToOptimalCost.count(goalState) == 0) {
-          throw MetronomeException("Bug in goal plan count");
-        }
-        auto cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
-        // reaction time
-        return {cStar - g, {}};
+      const auto nodeValue = getValueIfLeaf(simulatedStateNode);
+      if (nodeValue) {
+        return {nodeValue.value(), {}};
       }
 
       // only check every 200 nodes of the DFS
