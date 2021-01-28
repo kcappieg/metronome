@@ -402,13 +402,13 @@ namespace metronome {
         auto goalState = goalsWithPlans[0].first;
         double g = static_cast<double>(simulatedStateNode->g);
         if (goalsToOptimalCost.count(goalState) == 0) {
-          throw MetronomeException("Bug in goal plan count");
+          throw MetronomeException("Bug in goal plan count (follow-up)");
         }
         double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
         // reaction time
         return {cStar - g};
       } else if (goalsWithPlans.size() == 0) {
-        throw MetronomeException("Bug in search - goals to plan count had no goals with plans");
+        throw MetronomeException("Bug in search - goals to plan count had no goals with plans (follow-up)");
       } else {
         return {};
       }
