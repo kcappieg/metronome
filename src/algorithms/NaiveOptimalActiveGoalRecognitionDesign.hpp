@@ -31,6 +31,9 @@
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 6
 
 namespace metronome {
+  // quick and sloppy way to get unique ID. Sue me...
+  uint64_t idCounter = 0;
+
   class RecomputeOptimalException : public MetronomeException {
    public:
     explicit RecomputeOptimalException(std::string msg) : MetronomeException(std::move(msg)) {}
@@ -114,7 +117,7 @@ namespace metronome {
       }
 
       InterventionTrialResult trialResult = interventionTrial(
-          nodes[subjectState]);
+          nodes[subjectState], nodes[subjectState]);
       std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
       potentialOutcomes = trialResult.potentialSubjectActionOutcomes;
 
@@ -165,7 +168,7 @@ namespace metronome {
     struct Node {
     public:
       Node(State state, Cost g, Cost h, unsigned int iteration)
-              : state(std::move(state)), g(g), h(h), iteration{iteration} {
+              : id{idCounter++}, state(std::move(state)), g(g), h(h), iteration{iteration} {
         goalBackupIteration = 0;
       }
 
@@ -177,6 +180,7 @@ namespace metronome {
       /** Index used by the priority queue */
       mutable unsigned int index{std::numeric_limits<unsigned int>::max()};
 
+      uint64_t id;
       const State state;
       Cost g;
       Cost h;
@@ -212,8 +216,8 @@ namespace metronome {
 
     // Contains probability of action and resulting conditioned goal probability
     struct ActionProbability {
-      Node* successor;
-      double probabilityOfAction;
+      Node* successor{nullptr};
+      double probabilityOfAction{0};
       /** Goal priors conditioned on this action being taken. These values are normalized */
       std::unordered_map<State, double, StateHash> conditionedGoalPriors{};
     };
@@ -351,7 +355,7 @@ namespace metronome {
       }
 
       if (goalsLeft != 0) {
-        throw RecomputeOptimalException("Not all goals discovered from subject's current state. Dead end!");
+        throw RecomputeOptimalException("Not all goals discovered from subject's current state. Dead end! (follow-up)");
       }
 
       openList.clear();
@@ -416,8 +420,18 @@ namespace metronome {
 
     // Recursion - all going on the stack. Might become stack overflow - watch for this
 
+    /**
+     *
+     * @param simulatedStateNode
+     * @param baseNode Recompute optimal plan costs from this node
+     * when reversing interventions. Required to ensure successors from subject
+     * actions are appropriately repaired. Should be the parent of the
+     * simulatedStateNode
+     * @return
+     */
     InterventionTrialResult interventionTrial(
-            Node* simulatedStateNode) {
+            Node* simulatedStateNode,
+        Node* baseNode) {
       const auto nodeValue = getValueIfLeaf(simulatedStateNode);
       if (nodeValue) {
         return {nodeValue.value(), {}, {}};
@@ -430,12 +444,10 @@ namespace metronome {
         }
       }
 
-      bool depthLimitReached = false;
-      if (!identityTrial && (depth / 2) + 1 > maxDepth) {
-        depthLimitReached = true;
-        identityTrial = true;
+      ++depth;
+      if (depth > maxDepth) {
+        throw MetronomeException("Depth limit reached! Aborting search (follow-up)");
       }
-      depth++;
 
       InterventionTrialResult trialResult{0.0, {}, {}};
 
@@ -445,8 +457,8 @@ namespace metronome {
       // don't invoke that method then it could still be out of sync
       auto goalsToOptimalCostRestore = goalsToOptimalCost;
       // cache g and goals so that we can restore it after each trial
-      Cost simulatedGRestore = simulatedStateNode->g;
-      auto simulatedCurrentGoalsToPlanCountRestore = simulatedStateNode->goalsToPlanCount;
+      Cost baseGRestore = baseNode->g;
+      auto baseCurrentGoalsToPlanCountRestore = baseNode->goalsToPlanCount;
 
       std::vector<InterventionBundle<Domain>> interventions;
       if (identityTrial) {
@@ -529,11 +541,11 @@ namespace metronome {
           if (invalidIntervention) {
             domain->reversePatch(domainPatch, simulatedStateNode->state);
             // reset g and goals to plan count for recomputing optimal plans
-            simulatedStateNode->g = simulatedGRestore;
-            simulatedStateNode->goalsToPlanCount =
-                simulatedCurrentGoalsToPlanCountRestore;
+            baseNode->g = baseGRestore;
+            baseNode->goalsToPlanCount =
+                baseCurrentGoalsToPlanCountRestore;
             try {
-              recomputeOptimalInfo(simulatedStateNode->state);
+              recomputeOptimalInfo(baseNode->state);
             } catch (RecomputeOptimalException& rex) {
               // giving me a breakpoint for debug
               throw rex;
@@ -576,14 +588,14 @@ namespace metronome {
         // reset g and goals to plan count for simulated state.
         // could be affected by searches deeper in the tree, so this needs
         // to be reset after every trial
-        simulatedStateNode->g = simulatedGRestore;
-        simulatedStateNode->goalsToPlanCount =
-            simulatedCurrentGoalsToPlanCountRestore;
+        baseNode->g = baseGRestore;
+        baseNode->goalsToPlanCount =
+            baseCurrentGoalsToPlanCountRestore;
 
         // always recompute :(
         // doesn't work otherwise, there are too many edge cases
         try {
-          recomputeOptimalInfo(simulatedStateNode->state);
+          recomputeOptimalInfo(baseNode->state);
         } catch (RecomputeOptimalException& rex) {
           // breakpoint for debug
           throw rex;
@@ -594,11 +606,7 @@ namespace metronome {
         }
       }
 
-      // reset identity trial flag
-      if (depthLimitReached) {
-        identityTrial = false;
-      }
-      depth--;
+      --depth;
       return trialResult;
     }
 
@@ -637,7 +645,7 @@ namespace metronome {
         } else {
           // copy-assign
           goalsToPriors = actionResults.conditionedGoalPriors;
-          actionScore = interventionTrial(successor).score;
+          actionScore = interventionTrial(successor, simulatedStateNode).score;
         }
 
 #if NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE
@@ -696,28 +704,36 @@ namespace metronome {
         // eliminated that goal, this would cause problems
         bool found = false;
         for (auto& entry : conditionedGoalsToPriors) {
-          // if this is the goal, it has probability one. The action has
-          // probability equal to the prior
+          // Sum probability of all goals this state satisfies
+          // That sum is the probability of the "action" (i.e. stay put)
           if (domain->isGoal(simulatedStateNode->state, entry.first)
               and entry.second > 0.0) {
             found = true;
 
-            actionResult.conditionedGoalPriors[entry.first] = 1.0;
-            actionResult.probabilityOfAction = entry.second;
+            actionResult.conditionedGoalPriors[entry.first] = entry.second;
+            actionResult.probabilityOfAction += entry.second;
           } else {
             actionResult.conditionedGoalPriors[entry.first] = 0.0;
           }
         }
 
         if (found) {
+          assert(actionResult.probabilityOfAction > 0.0);
+          for (auto& entry : conditionedGoalsToPriors) {
+            actionResult.conditionedGoalPriors[entry.first] /= actionResult.probabilityOfAction;
+          }
           actionResults.push_back(std::move(actionResult));
         }
       }
 
       // for each action, but we only care about the successors
-      for (SuccessorBundle<Domain> successor : domain->successors(simulatedStateNode->state)) {
+      for (const auto& successorEdge : simulatedStateNode->successors) {
+        Node* successorNode = successorEdge.to;
+
+//      for (SuccessorBundle<Domain> successor : domain->successors(simulatedStateNode->state)) {
         // might record new parent, if applicable
-        Node* successorNode = getSuccessor(simulatedStateNode, successor.state, successor.actionCost);
+//        Node* successorNode = getSuccessor(simulatedStateNode, successor.state, successor.actionCost);
+
         // if g does not increase, the subject would not
         // transition from the simulated state to this successor via an optimal plan
         if (successorNode->g <= simulatedStateNode->g) continue;
@@ -848,9 +864,6 @@ namespace metronome {
     /**
      * Basically a standard A* node expansion
      *
-     * WARNING: Only supports domains where interventions include removing
-     * edges, not adding edges because we never re-evaluate the successors
-     * method to see if additional successors are available
      * @param source
      */
     void expandNode(Node* source) {
