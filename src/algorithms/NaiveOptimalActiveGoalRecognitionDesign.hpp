@@ -36,7 +36,8 @@ namespace metronome {
 
   class RecomputeOptimalException : public MetronomeException {
    public:
-    explicit RecomputeOptimalException(std::string msg) : MetronomeException(std::move(msg)) {}
+    explicit RecomputeOptimalException(std::string msg) noexcept : MetronomeException(std::move(msg)) {}
+    RecomputeOptimalException(const RecomputeOptimalException&) noexcept = default;
   };
 
   template<typename Domain>
@@ -45,11 +46,21 @@ namespace metronome {
     using State = typename Domain::State;
     using StateHash = typename metronome::Hash<State>;
     using Action = typename Domain::Action;
-    using Intervention = typename Domain::Intervention;
+    using Intervention [[maybe_unused]] = typename Domain::Intervention;
     using Cost = typename Domain::Cost;
     using Planner = metronome::Planner<Domain>;
     using Base = metronome::GoalRecognitionDesignPlanner<Domain>;
     using Patch = typename Domain::Patch;
+
+    enum class Metric {
+      REACTION_TIME,
+      FRACTION_OF_OPTIMAL,
+      DISTINCTIVENESS
+    };
+
+    // TODO make this configurable if we want
+    static constexpr bool optimizeMin{true};
+    static constexpr Metric objective{Metric::FRACTION_OF_OPTIMAL};
 
     NaiveOptimalActiveGoalRecognitionDesign(const Domain& domain, const Configuration& config)
         : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>),
@@ -404,18 +415,25 @@ namespace metronome {
 
       if (goalsWithPlans.size() == 1) {
         auto goalState = goalsWithPlans[0].first;
-        double g = static_cast<double>(simulatedStateNode->g);
+        auto g = static_cast<double>(simulatedStateNode->g);
         if (goalsToOptimalCost.count(goalState) == 0) {
           throw MetronomeException("Bug in goal plan count (follow-up)");
         }
-        double cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
-        // reaction time
-        return {cStar - g};
+        auto cStar = static_cast<double>(goalsToOptimalCost.at(goalState));
+
+        switch(objective) {
+          case Metric::REACTION_TIME:
+            return {cStar - g};
+          case Metric::FRACTION_OF_OPTIMAL:
+            return {g / cStar};
+          case Metric::DISTINCTIVENESS:
+            return {g};
+        }
       } else if (goalsWithPlans.size() == 0) {
         throw MetronomeException("Bug in search - goals to plan count had no goals with plans (follow-up)");
-      } else {
-        return {};
       }
+
+      return {};
     }
 
     // Recursion - all going on the stack. Might become stack overflow - watch for this
@@ -449,7 +467,9 @@ namespace metronome {
         throw MetronomeException("Depth limit reached! Aborting search (follow-up)");
       }
 
-      InterventionTrialResult trialResult{0.0, {}, {}};
+      InterventionTrialResult trialResult{
+          optimizeMin ? std::numeric_limits<double>::infinity() : 0.0, {}, {}
+      };
 
       // Caching information so that we can restore it at the end of each trial
 
@@ -573,7 +593,14 @@ namespace metronome {
         }
 #endif
 
-        if (actionTrialResult.score > trialResult.score or
+        // different predicate depending on if we're minimizing or maximizing
+        constexpr auto trialIsBetter = optimizeMin ? [](const double branchScore, const double currentBest) -> bool {
+          return branchScore < currentBest;
+        } : [](const double branchScore, const double currentBest) -> bool {
+          return branchScore > currentBest;
+        };
+
+        if (trialIsBetter(actionTrialResult.score, trialResult.score) or
             // prefer identity interventions when there is a tie
             (trialResult.score - actionTrialResult.score < std::numeric_limits<double>::epsilon()
              and interventionBundle.intervention == domain->getIdentityIntervention())) {
@@ -611,11 +638,6 @@ namespace metronome {
     }
 
     ActionTrialResult actionTrial(Node* simulatedStateNode) {
-      const auto nodeValue = getValueIfLeaf(simulatedStateNode);
-      if (nodeValue) {
-        return {nodeValue.value(), {}};
-      }
-
       // only check every 200 nodes of the DFS
       if(terminationChecker.has_value() && ++timeoutCounter % 100 == 0) {
         if (terminationChecker->reachedTermination()) {
@@ -730,10 +752,6 @@ namespace metronome {
       for (const auto& successorEdge : simulatedStateNode->successors) {
         Node* successorNode = successorEdge.to;
 
-//      for (SuccessorBundle<Domain> successor : domain->successors(simulatedStateNode->state)) {
-        // might record new parent, if applicable
-//        Node* successorNode = getSuccessor(simulatedStateNode, successor.state, successor.actionCost);
-
         // if g does not increase, the subject would not
         // transition from the simulated state to this successor via an optimal plan
         if (successorNode->g <= simulatedStateNode->g) continue;
@@ -754,7 +772,7 @@ namespace metronome {
 
         actionResult.probabilityOfAction = 0.0;
 
-        double adjustedSum = 0.0;
+        double normalizingSum = 0.0;
         // cycle through goal hypothesis of successor
         for (auto& hypothesisEntry : actionResult.successor->goalsToPlanCount) {
           // sanity checks
@@ -770,25 +788,20 @@ namespace metronome {
               (double)hypothesisEntry.second /
               (double)simulatedStateNode->goalsToPlanCount[hypothesisEntry.first];
 
-          // Add to the probability of this action:
-            // conditioned goal prior * fraction of plans from simulated
-            // node to the goal that pass through successor
-          actionResult.probabilityOfAction +=
-              conditionedGoalsToPriors[hypothesisEntry.first] * fractionOfPlansForGoal;
-
           // probability of the considered goal conditioned on the agent taking this action
           double conditionedProbability =
               fractionOfPlansForGoal * conditionedGoalsToPriors[hypothesisEntry.first];
+          actionResult.probabilityOfAction += conditionedProbability;
 
           actionResult.conditionedGoalPriors[hypothesisEntry.first] = conditionedProbability;
-          adjustedSum += conditionedProbability;
+          normalizingSum += conditionedProbability;
         }
 
-        // Finally, adjust goal priors based on on the sum of conditioned
+        // Finally, normalize goal priors based on on the sum of conditioned
         // probabilities
-        if (adjustedSum > 0.0) {
+        if (normalizingSum > 0.0) {
           for (auto& entry : conditionedGoalsToPriors) {
-            actionResult.conditionedGoalPriors[entry.first] /= adjustedSum;
+            actionResult.conditionedGoalPriors[entry.first] /= normalizingSum;
           }
         }
       }
@@ -922,12 +935,12 @@ namespace metronome {
     /*****************************************
             Log Helpers
     *****************************************/
-    std::string pad(uint16_t depth) {
+    std::string pad(uint64_t currentDepth) {
       std::ostringstream str;
-      for (uint64_t i = 0; i < depth; i++) {
+      for (uint64_t i = 0; i < currentDepth; i++) {
         str << "  ";
       }
-      str << "d" << depth << " ";
+      str << "d" << currentDepth << " ";
       return str.str();
     }
 

@@ -36,13 +36,13 @@ constexpr auto isValidFactory(FnType&&) {
   auto resultFnName##Function_has_##methodName = isValidFactory([](auto&& instance, auto&&... args) -> decltype(instance.methodName(args...)) {}); \
                                                                   \
   template <typename InstanceType, typename... Args> \
-  auto resultFnName(InstanceType& instance, Args&... args) \
+  auto resultFnName(InstanceType& instance, Args&&... args) \
     ->typename std::enable_if<decltype(resultFnName##Function_has_##methodName(instance, args...))::value, void>::type { \
-    instance.methodName(args...); \
+    instance.methodName(std::forward<Args>(args)...); \
   } \
 \
   template <typename InstanceType, typename... Args> \
-    auto resultFnName(InstanceType& instance, Args&... args) \
+    auto resultFnName(InstanceType& instance, Args&&... args) \
       ->typename std::enable_if<!decltype(resultFnName##Function_has_##methodName(instance, args...))::value, void>::type {}
 
 } //namespace metronome

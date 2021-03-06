@@ -3,11 +3,12 @@
 #include <exception>
 #include <string>
 namespace metronome {
-class MetronomeException : std::exception {
+class MetronomeException : public std::exception {
  public:
-  MetronomeException(std::string message) : message{std::move(message)} {}
+  explicit MetronomeException(std::string message) noexcept : message{std::move(message)} {}
+  MetronomeException(const MetronomeException& other) noexcept : message{other.message} {};
 
-  virtual const char* what() const throw() { return this->message.c_str(); }
+  [[nodiscard]] const char* what() const noexcept override { return this->message.c_str(); }
 
  protected:
   const std::string message;
@@ -15,7 +16,8 @@ class MetronomeException : std::exception {
 
 class MetronomeTimeoutException : public MetronomeException {
  public:
-  MetronomeTimeoutException() : MetronomeException("Timeout!") {}
+  MetronomeTimeoutException() noexcept : MetronomeException("Timeout!") {}
+  MetronomeTimeoutException(const MetronomeTimeoutException&) noexcept = default;
 };
 
 }  // namespace metronome
