@@ -59,12 +59,15 @@ namespace metronome {
     };
 
     // TODO make this configurable if we want
+    // either min or max
     static constexpr bool optimizeMin{true};
     static constexpr Metric objective{Metric::FRACTION_OF_OPTIMAL};
 
     NaiveOptimalActiveGoalRecognitionDesign(const Domain& domain, const Configuration& config)
         : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>),
-          maxDepth(config.getLong(MAX_DEPTH, std::numeric_limits<uint32_t>::max())) {
+          maxDepth(config.getLong(MAX_DEPTH, std::numeric_limits<uint32_t>::max())),
+          iterativeDeepening{config.getBool(GRD_ITERATIVE_DEEPENING, false)}
+    {
       if (config.hasMember(GOAL_PRIORS)) {
         std::vector<double> goalPriors = config.getDoubles(GOAL_PRIORS);
 
@@ -75,11 +78,25 @@ namespace metronome {
       } else {
         throw MetronomeException("No goal priors specified");
       }
+
+      // init term checker to action duration for iterative deepening
+      // TODO Make this more configurable / standard in GRD framework
+      //  This is quick + dirty thesis research code. Not good for generalizing
+      //  this framework
+      if (iterativeDeepening){
+        terminationChecker.emplace();
+        planningIterationTimeLimit = config.getLong(ACTION_DURATION);
+      }
     }
 
     std::vector<InterventionBundle<Domain>> selectInterventions(
             const State& subjectState, const Domain& systemState
     ) override {
+      // set term checker for iterative deepening
+      if (iterativeDeepening) {
+        terminationChecker->resetTo(planningIterationTimeLimit);
+      }
+
       const auto iterationStartTime = currentNanoTime();
       GoalRecognitionDesignPlanner<Domain>::beginIteration();
       // copy domain, set accessible pointer to it
@@ -127,6 +144,9 @@ namespace metronome {
         }
       }
 
+      // TODO: Define intervention here, descend in a while loop checking the termination checker
+      //  Also wrap in a try-catch for timeout exceptions. Rethrow if not iterative deepening
+
       InterventionTrialResult trialResult = interventionTrial(
           nodes[subjectState], nodes[subjectState]);
       std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
@@ -139,12 +159,11 @@ namespace metronome {
       depth = 0;
       Base::recordAttribute("numOptimalRecomputations", recomputeOptimalIteration - recomputeOptimalBegin);
 
-      const auto iterationEndTime = currentNanoTime();
       // instead of averaging all iteration runtimes, we're most concerned with the
       // first iteration for the Naive algorithm.
       // You could imagine caching computation for subsequent iterations...
       if (storeFirstIterationRuntime) {
-        Base::recordAttribute("firstIterationRuntime", iterationEndTime - iterationStartTime);
+        Base::recordAttribute("firstIterationRuntime", currentNanoTime() - iterationStartTime);
       }
 
       if (intervention.has_value()) {
@@ -156,6 +175,7 @@ namespace metronome {
 
         return {*intervention};
       }
+      // The experiment runner will implicitly choose "identity"
       return {};
     }
 
@@ -169,8 +189,11 @@ namespace metronome {
       return {};
     }
 
-    void setTerminationChecker(TimeTerminationChecker& experimentTerminationChecker) {
-      terminationChecker = experimentTerminationChecker;
+    void setExperimentTerminationChecker(TimeTerminationChecker& experimentTerminationChecker) {
+      // only set if we haven't already set the termination checker
+      if (not terminationChecker) {
+        terminationChecker = experimentTerminationChecker;
+      }
     }
 
   private:
@@ -308,8 +331,18 @@ namespace metronome {
 
       Cost finalFLayer = std::numeric_limits<Cost>::max();
 
+      // set up counter for termination checking
+      // Since this function could be expensive, we need to term check within it
+      size_t localTimeoutCounter = 0;
+
       // loop through until we've found all paths to all goals
       while (openList.isNotEmpty()) {
+        if(terminationChecker.has_value() && ++localTimeoutCounter % 10 == 0) {
+          if (terminationChecker->reachedTermination()) {
+            throw MetronomeTimeoutException();
+          }
+        }
+
         Node* top = openList.pop();
         // we've found every path to every goal
         if (top->f() > finalFLayer) {
@@ -386,6 +419,12 @@ namespace metronome {
       // Loop until open is fully empty
       int64_t backupCount = 0;
       while (openList.isNotEmpty()) {
+        if(terminationChecker.has_value() && ++localTimeoutCounter % 10 == 0) {
+          if (terminationChecker->reachedTermination()) {
+            throw MetronomeTimeoutException();
+          }
+        }
+
         Node* top = openList.pop();
 
         backupGoalHypothesis(top);
@@ -455,8 +494,8 @@ namespace metronome {
         return {nodeValue.value(), {}, {}};
       }
 
-      // only check every 200 nodes of the DFS
-      if(terminationChecker.has_value() && ++timeoutCounter % 100 == 0) {
+      // only check every 10 nodes of the DFS
+      if(terminationChecker.has_value() && ++timeoutCounter % 10 == 0) {
         if (terminationChecker->reachedTermination()) {
           throw MetronomeTimeoutException();
         }
@@ -638,8 +677,8 @@ namespace metronome {
     }
 
     ActionTrialResult actionTrial(Node* simulatedStateNode) {
-      // only check every 200 nodes of the DFS
-      if(terminationChecker.has_value() && ++timeoutCounter % 100 == 0) {
+      // only check every 10 nodes of the DFS
+      if(terminationChecker.has_value() && ++timeoutCounter % 10 == 0) {
         if (terminationChecker->reachedTermination()) {
           throw MetronomeTimeoutException();
         }
@@ -960,14 +999,23 @@ namespace metronome {
 
     // Fields that reset after each iteration
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
-    uint64_t recomputeOptimalIteration = 0;
-    uint32_t depth = 0;
+    uint64_t recomputeOptimalIteration{0};
+    uint32_t depth{0};
+
+    /**
+     * If true (controlled by config), algorithm uses an iterative deepening strategy.
+     * Branches are ignored if goal probabilities do not meet a minimum threshold.
+     * In subsequent iterations, the threshold is reduced. We continue to iterate until
+     * time runs out. Iteration time is controlled by "action duration" config
+     */
+    bool iterativeDeepening;
+    int64_t planningIterationTimeLimit{0};
     /**
      * Vector holds predicted outcomes given an intervention.
      * We will use this to update goal priors based on the action the subject
      * took
      */
-    std::vector<ActionProbability> potentialOutcomes;
+    std::vector<ActionProbability> potentialOutcomes{};
     /**
      * Flag is set when an identity action is trialed.
      * Signals that a trial is seeing what happens if no more interventions are executed

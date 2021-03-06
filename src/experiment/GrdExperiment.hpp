@@ -25,7 +25,7 @@ namespace metronome{
 
 /** Having fun with macros, don't judge me */
 DEFINE_METHOD_CALL_IF_AVAILABLE(visualize, visualize)
-DEFINE_METHOD_CALL_IF_AVAILABLE(giveTerminationChecker, setTerminationChecker)
+DEFINE_METHOD_CALL_IF_AVAILABLE(giveExperimentTerminationChecker, setExperimentTerminationChecker)
 
 
 template <typename Domain, typename GrdPlanner, typename SubjectPlanner>
@@ -93,7 +93,7 @@ public:
 #endif
 
     // if planner accepts termination checker, give it
-    giveTerminationChecker(grdPlanner, experimentTimeLimit.value());
+    giveExperimentTerminationChecker(grdPlanner, experimentTimeLimit.value());
 
     try {
       // Implement loop - get intervention, then action. Repeat.

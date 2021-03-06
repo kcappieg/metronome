@@ -66,8 +66,9 @@ static const std::string GOAL_PRIORS{"goalPriors"};
 static const std::string SUBJECT_GOAL{"subjectGoal"};
 static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
-// Optimal GRD
+// Naive GRD
 static const std::string MAX_DEPTH{"maxDepth"};
+static const std::string GRD_ITERATIVE_DEEPENING{"grdIterativeDeepening"}; // sub-optimal iterative deepening
 
 // Cluster RTS
 static const std::string CLUSTER_NODE_LIMIT{"clusterNodeLimit"};
