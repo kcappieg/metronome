@@ -13,16 +13,16 @@ from distlre.distlre import DistLRE, Task, RemoteHost
 __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 # flags for changing script behavior
-ENABLE_SLACK_NOTIFICATION = False
-SLACK_CHANNEL = '#kevin-experiments'
+ENABLE_SLACK_NOTIFICATION = True
+SLACK_CHANNEL = '#experiments'
 
-EXECUTE_REMOTE = False
+EXECUTE_REMOTE = True
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
-LOCAL_THREADS = 6  # Number of local threads if not executing on remote servers
+LOCAL_THREADS = 14  # Number of local threads if not executing on remote servers
 LOCAL_MACHINE_NAME = 'byodoin.cs.unh.edu'
 
-time_limit_seconds = 10 * 60  # time limit for experiments
+time_limit_seconds = 60 * 60  # time limit for experiments
 
 
 def generate_base_configuration():
@@ -124,8 +124,9 @@ def generate_agrd_configs():
     for goal_count in range(2, 5):
         configs_with_priors = cartesian_product(gw_configs, 'goalPriors',
                                                 [priors_by_goal_count[goal_count]])
-        configurations += cartesian_product(configs_with_priors, 'domainPath',
-                                            paths_by_goal_count[goal_count])
+        # WARNING: disabling other domain configs here
+        # configurations += cartesian_product(configs_with_priors, 'domainPath',
+        #                                     paths_by_goal_count[goal_count])
 
     # reset
     # TODO: split into 2 functions here
@@ -256,12 +257,18 @@ def construct_results(futures):
         result = future.result()
         # print(f'output: {result.output}')
 
-        raw_output = result.output.splitlines()
         # print('Output:')
         # print('\n'.join(raw_output))
         if len(result.error) > 0:
             print('Error:')
             print(result.error)
+
+        if result.output is None:
+            print('No output error')
+            print(future.configuration)
+
+        # allow exception for now... To stop the process
+        raw_output = result.output.splitlines()
         if '#' not in raw_output:
             results.append({
                 'configuration': future.configuration,
@@ -392,7 +399,7 @@ def main():
         raise Exception('Build failed.')
     print('Build complete!')
 
-    file_name = 'results/grd-test.json'
+    file_name = 'results/grd-logistics-2-25-21.json'
 
     if recycle:
         # Load previous configurations
@@ -407,7 +414,7 @@ def main():
         # configurations = config_from_file('resources/configuration/grd.json')
 
         label_algorithms(configurations)
-        configurations = configurations[:1]  # debug - keep only one config
+        # configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
     # print(configurations)

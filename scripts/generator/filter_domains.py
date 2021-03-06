@@ -46,7 +46,7 @@ def generate_agrd_configs(domain_paths, domain_type, goals):
         config['domainName'] = domain_type
         config['terminationType'] = 'EXPANSION'
         config['subjectAlgorithm'] = 'NAIVE_DYNAMIC'
-        config['timeLimit'] = 900_000_000_000  # 900 second (15 min) timeout
+        config['timeLimit'] = 3600_000_000_000  # 3600 second (60 min) timeout
         config['maxDepth'] = 1000
         config['goalPriors'] = [1 / goals for _ in range(goals)]
         config['subjectGoal'] = 0
@@ -193,12 +193,27 @@ def move_agrd_filter_results(successes_info_by_depth_bound, timeouts_info_by_dep
             success_info = get_with_default_dict(successes_info_by_depth_bound, depth_bound)
             successes_list = get_with_default_list(success_info, out_dir)
 
-            meta_file.write(f'Depth Bound {depth_bound}: '
-                            f'{len(successes_list)} successes, {len(timeout_list)} timeouts\n')
-            for instance_path, instance_filename, _, _ in timeout_list + successes_list:
+            num_timeouts = len(timeout_list)
+            num_successes = len(successes_list)
+            total = num_timeouts + num_successes
+            fraction_timeout = float(num_timeouts) / float(total)
+
+            meta_log_text = f'Depth Bound {depth_bound}: '\
+                            f'{num_successes} successes, {num_timeouts} timeouts, {fraction_timeout} timeout fraction'
+
+            to_timeout_dir = timeout_list[:]
+            if num_timeouts <= 3 and fraction_timeout <= 0.01:
+                # tolerate up to 3 timeouts up to 1% of instances
+                meta_log_text += ' (ignoring timeouts, writing successes)'
+            else:
+                to_timeout_dir += successes_list
+                success_info[out_dir] = []  # wipe the list so we don't write to success dir later
+
+            meta_file.write(meta_log_text + '\n')
+
+            for instance_path, instance_filename, _, _ in to_timeout_dir:
                 move(instance_path, os.path.join(timeout_dir, instance_filename))
 
-            success_info[out_dir] = []  # wipe the list so we don't write to success dir later
 
     for file in meta_files_by_out.values():
         file.write('\n=====================================\n\n')
@@ -335,6 +350,8 @@ def run_filter_observer(args):
                 base_domain_name = f'geometric_0.4dist_{goals}goal_{locs}loc_3pkg_1trk_'
                 dir_name = f'./logistics/{goals}goal'
                 num_instances = len(glob(os.path.join(dir_name, base_domain_name) + '*'))
+                if num_instances == 0:
+                    continue
 
                 configs.append({
                     'source_dir': dir_name,
