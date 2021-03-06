@@ -27,8 +27,8 @@ def main(paths, configs):
         print(f'Domain {title}\n')
 
         data = prepare_data(paths, domain_filter)
-        plot_runtime(data, title, file_name)
-        # plot_scatter(data, title, file_name)
+        # plot_runtime(data, title, file_name)
+        plot_scatter(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
@@ -57,9 +57,12 @@ def prepare_data(paths, domain_filter):
     # remove depth=0. Could happen if instance starts in goal configuration
     # such instances should be filtered out of experiments... but bandaid here instead
     data = data[data.depthUpperBound > 0]
-    # remove depth>6. This is b/c no grid world could complete depth >= 6 without timing out
-    # some instances
-    data = data[data.depthUpperBound < 6]
+    # remove depth>6 for grid world b/c no grid world could complete depth >= 6 without timing out
+    # some instances.
+    data = data[
+        (data.domainName == 'LOGISTICS') |
+        ((data.domainName != 'LOGISTICS') & (data.depthUpperBound < 6))
+    ]
 
     print(f'Valid completed instances: {len(data)}')
 
@@ -140,7 +143,7 @@ def plot_runtime(data, title, file_name):
                       figsize=(3, 3))
 
     if PLOT_LOG:
-        set_log_y_ticks(plot, 3)
+        set_log_y_ticks(plot, 5, 0)
 
     set_x_ticks(plot, data, 'depthUpperBound')
 
@@ -194,16 +197,14 @@ def plot_scatter(data, title, file_name):
     set_x_ticks(ax, data, 'depthUpperBound')
 
     if PLOT_LOG:
-        set_log_y_ticks(ax, 3)
+        set_log_y_ticks(ax, 5)
 
     # TODO: save plot to pdf
 
     plt.show()
 
 
-def set_log_y_ticks(plot, num_levels_zero_above=5):
-    num_levels_below_zero = 1
-
+def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero = 1):
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
     ticks += [10 ** num for num in range(num_levels_zero_above)]
 
@@ -218,22 +219,22 @@ def set_x_ticks(plot, data, field_name):
 
 
 if __name__ == "__main__":
-    main(['../results/grd-rooms-uniform-1-9-20.json'],
+    main(['../results/grd-rooms-uniform-1-9-20.json', '../results/grd-logistics-2-25-21.json'],
          [
+             # {
+             #     'title': 'Uniform Gridworld',
+             #     'file_name': 'uniform',
+             #     'domain_filter': 'grd/uniform'
+             # },
+             # {
+             #     'title': 'Rooms Gridworld',
+             #     'file_name': 'rooms',
+             #     'domain_filter': 'grd/rooms'
+             # },
              {
-                 'title': 'Uniform Gridworld',
-                 'file_name': 'uniform',
-                 'domain_filter': 'grd/uniform'
-             },
-             {
-                 'title': 'Rooms Gridworld',
-                 'file_name': 'rooms',
-                 'domain_filter': 'grd/rooms'
-                 # },
-                 # {
-                 #     'title': 'Logistics',
-                 #     'file_name': 'logistics',
-                 #     'domain_filter': 'grd/logistics'
+                 'title': 'Logistics',
+                 'file_name': 'logistics',
+                 'domain_filter': 'logistics'
                  # },
                  # {
                  #     'title': 'Optimal AGRD Complexity',
