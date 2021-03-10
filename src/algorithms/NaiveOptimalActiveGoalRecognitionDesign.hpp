@@ -135,6 +135,12 @@ namespace metronome {
       uint64_t recomputeOptimalBegin = recomputeOptimalIteration;
 
       recomputeOptimalInfo(subjectState);
+      Node* currentStateNode = nodes[subjectState];
+      // Set deepening threshold to even split between the number of goals
+      // still active in the goal hypothesis.
+      // Use epsilon for floating point imprecision
+      deepeningThreshold =
+          (1.0 / currentStateNode->goalsToPlanCount.size()) - std::numeric_limits<double>::epsilon();
 
       // Store optimal plan lengths, but only on first iteration
       if (recomputeOptimalIteration == 1) {
@@ -144,39 +150,67 @@ namespace metronome {
         }
       }
 
-      // TODO: Define intervention here, descend in a while loop checking the termination checker
-      //  Also wrap in a try-catch for timeout exceptions. Rethrow if not iterative deepening
+      std::optional<InterventionTrialResult> incumbent{};
+      if (iterativeDeepening) {
+        // init the incumbent as the identity action. Call this the first iteration :)
+        incumbent.emplace(InterventionTrialResult{
+            0.0,
+            Base::getIdentityIntervention(localDomain),
+            computeActionProbabilities(currentStateNode, goalsToPriors)});
+      }
 
-      InterventionTrialResult trialResult = interventionTrial(
-          nodes[subjectState], nodes[subjectState]);
-      std::optional<InterventionBundle<Domain>> intervention = trialResult.bestIntervention;
-      potentialOutcomes = trialResult.potentialSubjectActionOutcomes;
+      // TODO: atrocious code. Iterative-deepening should be executed maybe in another function
+      //  Refactor if you want to keep using. (Whole file is atrocious at this point...)
+      try {
+        while (not incumbent or (iterativeDeepening and not terminationChecker->reachedTermination()) ) {
+          auto trialResult = interventionTrial(currentStateNode, currentStateNode);
 
-      LOG(DEBUG) << "Intervention score: " << trialResult.score;
+          // If the incumbent doesn't exist or the best intervention exists.
+          // This check prevents us from overwriting the default Identity intervention
+          // when no intervention was identified
+          if (not incumbent or trialResult.bestIntervention) {
+            incumbent.emplace(std::move(trialResult));
+          }
+
+          deepeningThreshold /= 2.0;
+        }
+      } catch (const MetronomeTimeoutException& timeoutEx) {
+        if (not iterativeDeepening) {
+          throw timeoutEx;
+        }
+      }
+
+      LOG(DEBUG) << "Intervention score: " << incumbent->score;
+
+      std::optional<InterventionBundle<Domain>> intervention = incumbent->bestIntervention;
+      potentialOutcomes = incumbent->potentialSubjectActionOutcomes;
 
       domain = nullptr;
-
       depth = 0;
       Base::recordAttribute("numOptimalRecomputations", recomputeOptimalIteration - recomputeOptimalBegin);
 
       // instead of averaging all iteration runtimes, we're most concerned with the
       // first iteration for the Naive algorithm.
       // You could imagine caching computation for subsequent iterations...
+      auto iterationRuntime = currentNanoTime() - iterationStartTime;
       if (storeFirstIterationRuntime) {
-        Base::recordAttribute("firstIterationRuntime", currentNanoTime() - iterationStartTime);
+        Base::recordAttribute("firstIterationRuntime", iterationRuntime);
+      }
+      // also keep average (mostly for iterative deepening)
+      Base::recordAttribute("iterationRuntime", iterationRuntime);
+
+      if (not intervention) {
+        // The experiment runner will implicitly choose "identity"
+        return {};
       }
 
-      if (intervention.has_value()) {
-        // we want to know if this domain actually has something for the observer
-        // to do, so store that here
-        if (intervention->intervention != domain->getIdentityIntervention()) {
-          Base::recordAttribute("observerIsActive", 1);
-        }
-
-        return {*intervention};
+      // we want to know if this domain actually has something for the observer
+      // to do, so store that here
+      if (intervention->intervention != domain->getIdentityIntervention()) {
+        Base::recordAttribute("observerIsActive", 1);
       }
-      // The experiment runner will implicitly choose "identity"
-      return {};
+
+      return {*intervention};
     }
 
     std::optional<State> getGoalPrediction(const Domain&,
@@ -438,22 +472,26 @@ namespace metronome {
     }
 
     /**
-     * If node is a leaf, get its value. Otherwise return empty optional
+     * If node is a leaf, get its value. Otherwise return empty optional.
+     * Note that for iterative deepening, a node is a leaf if only 1 goal
+     * meets the threshold
      * @param simulatedStateNode
      * @return
      */
     std::optional<double> getValueIfLeaf(Node* simulatedStateNode) {
-      std::vector<typename std::unordered_map<State, Cost, StateHash>::value_type> goalsWithPlans{};
-      // Filter out map entries to just those with > 0 plan counts
-      std::copy_if(simulatedStateNode->goalsToPlanCount.cbegin(),
-                   simulatedStateNode->goalsToPlanCount.cend(),
-                   std::back_inserter(goalsWithPlans),
-                   [](const auto& mapVal) {
-                     return mapVal.second > 0;
+      std::vector<typename std::unordered_map<State, double, StateHash>::value_type> possibleGoals{};
+      // Filter out map entries to just those with > 0 probability
+      // Iterative deepening filters to just those that have > threshold probability
+      std::copy_if(goalsToPriors.cbegin(),
+                   goalsToPriors.cend(),
+                   std::back_inserter(possibleGoals),
+                   [&](const auto& mapVal) {
+                     return (not iterativeDeepening and mapVal.second > 0.0)
+                            or mapVal.second > deepeningThreshold;
                    });
 
-      if (goalsWithPlans.size() == 1) {
-        auto goalState = goalsWithPlans[0].first;
+      if (possibleGoals.size() == 1) {
+        auto goalState = possibleGoals[0].first;
         auto g = static_cast<double>(simulatedStateNode->g);
         if (goalsToOptimalCost.count(goalState) == 0) {
           throw MetronomeException("Bug in goal plan count (follow-up)");
@@ -468,7 +506,7 @@ namespace metronome {
           case Metric::DISTINCTIVENESS:
             return {g};
         }
-      } else if (goalsWithPlans.size() == 0) {
+      } else if (possibleGoals.size() == 0) {
         throw MetronomeException("Bug in search - goals to plan count had no goals with plans (follow-up)");
       }
 
@@ -484,7 +522,7 @@ namespace metronome {
      * when reversing interventions. Required to ensure successors from subject
      * actions are appropriately repaired. Should be the parent of the
      * simulatedStateNode
-     * @return
+     * @return TODO Should return optional
      */
     InterventionTrialResult interventionTrial(
             Node* simulatedStateNode,
@@ -507,7 +545,7 @@ namespace metronome {
       }
 
       InterventionTrialResult trialResult{
-          optimizeMin ? std::numeric_limits<double>::infinity() : 0.0, {}, {}
+          (optimizeMin ? 1.0 : -1.0) * std::numeric_limits<double>::infinity(), {}, {}
       };
 
       // Caching information so that we can restore it at the end of each trial
@@ -697,6 +735,10 @@ namespace metronome {
       for (const ActionProbability& actionResults : trialResult.potentialSubjectActionOutcomes) {
         Node* successor = actionResults.successor;
         double probability = actionResults.probabilityOfAction;
+        // can happen with iterative deepening algorithm
+        if (probability == 0.0) {
+          continue;
+        }
 
         double actionScore = 0.0;
         [[maybe_unused]] bool noOp = false;
@@ -745,13 +787,33 @@ namespace metronome {
      * @param conditionedGoalsToPriors Map of goals to probabilities. Probability
      * is expected to be conditioned on the sequence of actions the subject has
      * taken thus far (in the simulation)
-     * @return
+     * @return Each element represents an action an optimal subject could take
+     * represented by its successor. Also included are bayesian updated goal posteriors
+     * assuming that action is taken and the probability of the action.
+     * When iterativeDeepening is true, this probability could be returned as 0.0.
+     * We do not want to prune it from the vector, however, because we need the
+     * goal posterior if the agent does take that action.
      */
     std::vector<ActionProbability> computeActionProbabilities(
         Node* simulatedStateNode,
         std::unordered_map<State, double, StateHash>& conditionedGoalsToPriors) {
-
       std::vector<ActionProbability> actionResults{};
+      // separate from conditionedGoalsToPriors for iterative deepening scenario
+      // where we discard goals that don't meet the threshold
+      std::unordered_map<State, double, StateHash> actionGoalProbabilities{conditionedGoalsToPriors};
+      if (iterativeDeepening) {
+        double normalizingSum = 0.0;
+        for (auto& goalProbPair : actionGoalProbabilities) {
+          if (goalProbPair.second < deepeningThreshold) {
+            actionGoalProbabilities[goalProbPair.first] = 0.0;
+          } else {
+            normalizingSum += goalProbPair.second;
+          }
+        }
+        for (auto& goalProbPair : actionGoalProbabilities) {
+          actionGoalProbabilities[goalProbPair.first] /= normalizingSum;
+        }
+      }
 
       // special check for if this state is a goal - we say the subject
       // will stay put and we assign the goal's probability to it
@@ -772,6 +834,10 @@ namespace metronome {
             found = true;
 
             actionResult.conditionedGoalPriors[entry.first] = entry.second;
+            // NOTE: not using the actionGoalProbabilities map here on purpose
+            // If the state is a goal, then iterative deepening algorithm does not
+            // want to discount it, no matter how unlikely. It will only deepen
+            // the tree by 1 additional node at most
             actionResult.probabilityOfAction += entry.second;
           } else {
             actionResult.conditionedGoalPriors[entry.first] = 0.0;
@@ -830,10 +896,16 @@ namespace metronome {
           // probability of the considered goal conditioned on the agent taking this action
           double conditionedProbability =
               fractionOfPlansForGoal * conditionedGoalsToPriors[hypothesisEntry.first];
-          actionResult.probabilityOfAction += conditionedProbability;
 
           actionResult.conditionedGoalPriors[hypothesisEntry.first] = conditionedProbability;
           normalizingSum += conditionedProbability;
+
+          // Term to add to action probability. If not iterative deepening,
+          // identical to conditionedProbability. If iterative deepening, will
+          // only include goals we haven't pruned yet based on our threshold
+          double actionProbabilityTerm =
+              fractionOfPlansForGoal * actionGoalProbabilities[hypothesisEntry.first];
+          actionResult.probabilityOfAction += actionProbabilityTerm;
         }
 
         // Finally, normalize goal priors based on on the sum of conditioned
@@ -851,6 +923,8 @@ namespace metronome {
     /*****************************************
             Utility / Helper methods
     *****************************************/
+
+
 
     /**
      * Creates a node if it doesn't already exist. Updates parent / successor sets.
@@ -1009,6 +1083,7 @@ namespace metronome {
      * time runs out. Iteration time is controlled by "action duration" config
      */
     bool iterativeDeepening;
+    double deepeningThreshold{0.0};
     int64_t planningIterationTimeLimit{0};
     /**
      * Vector holds predicted outcomes given an intervention.

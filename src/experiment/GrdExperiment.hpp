@@ -131,7 +131,6 @@ public:
         visualize(domain, playbackOutputStream, subjectState);
 #endif
 
-
         // Subject Iteration
         // First check to see if anything has changed (or we've run out of actions). If not, don't invoke planner
         if (patch.affectedStates.size() > 0 || cachedActions.size() == 0) {
