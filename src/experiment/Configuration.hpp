@@ -68,7 +68,7 @@ static const std::string SUBJECT_ALGORITHM{"subjectAlgorithm"};
 
 // Naive GRD
 static const std::string MAX_DEPTH{"maxDepth"};
-static const std::string GRD_ITERATIVE_DEEPENING{"grdIterativeDeepening"}; // sub-optimal iterative deepening
+static const std::string GRD_ITERATIVE_WIDENING{"grdIterativeWidening"}; // sub-optimal iterative widening
 
 // Cluster RTS
 static const std::string CLUSTER_NODE_LIMIT{"clusterNodeLimit"};

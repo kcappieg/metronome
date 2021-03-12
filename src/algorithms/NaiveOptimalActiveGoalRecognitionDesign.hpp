@@ -66,7 +66,7 @@ namespace metronome {
     NaiveOptimalActiveGoalRecognitionDesign(const Domain& domain, const Configuration& config)
         : openList(Memory::OPEN_LIST_SIZE, &fComparator<Node>),
           maxDepth(config.getLong(MAX_DEPTH, std::numeric_limits<uint32_t>::max())),
-          iterativeDeepening{config.getBool(GRD_ITERATIVE_DEEPENING, false)}
+          iterativeWidening{config.getBool(GRD_ITERATIVE_WIDENING, false)}
     {
       if (config.hasMember(GOAL_PRIORS)) {
         std::vector<double> goalPriors = config.getDoubles(GOAL_PRIORS);
@@ -83,7 +83,7 @@ namespace metronome {
       // TODO Make this more configurable / standard in GRD framework
       //  This is quick + dirty thesis research code. Not good for generalizing
       //  this framework
-      if (iterativeDeepening){
+      if (iterativeWidening){
         terminationChecker.emplace();
         planningIterationTimeLimit = config.getLong(ACTION_DURATION);
       }
@@ -93,7 +93,7 @@ namespace metronome {
             const State& subjectState, const Domain& systemState
     ) override {
       // set term checker for iterative deepening
-      if (iterativeDeepening) {
+      if (iterativeWidening) {
         terminationChecker->resetTo(planningIterationTimeLimit);
       }
 
@@ -136,11 +136,9 @@ namespace metronome {
 
       recomputeOptimalInfo(subjectState);
       Node* currentStateNode = nodes[subjectState];
-      // Set deepening threshold to even split between the number of goals
-      // still active in the goal hypothesis.
-      // Use epsilon for floating point imprecision
-      deepeningThreshold =
-          (1.0 / currentStateNode->goalsToPlanCount.size()) - std::numeric_limits<double>::epsilon();
+      // Set widening threshold to consider actions whose likelihood equals
+      // the most likely action.
+      topNActionProbabilty = 1;
 
       // Store optimal plan lengths, but only on first iteration
       if (recomputeOptimalIteration == 1) {
@@ -151,7 +149,7 @@ namespace metronome {
       }
 
       std::optional<InterventionTrialResult> incumbent{};
-      if (iterativeDeepening) {
+      if (iterativeWidening) {
         // init the incumbent as the identity action. Call this the first iteration :)
         incumbent.emplace(InterventionTrialResult{
             0.0,
@@ -162,7 +160,7 @@ namespace metronome {
       // TODO: atrocious code. Iterative-deepening should be executed maybe in another function
       //  Refactor if you want to keep using. (Whole file is atrocious at this point...)
       try {
-        while (not incumbent or (iterativeDeepening and not terminationChecker->reachedTermination()) ) {
+        while (not incumbent or (iterativeWidening and not terminationChecker->reachedTermination()) ) {
           auto trialResult = interventionTrial(currentStateNode, currentStateNode);
 
           // If the incumbent doesn't exist or the best intervention exists.
@@ -172,10 +170,15 @@ namespace metronome {
             incumbent.emplace(std::move(trialResult));
           }
 
-          deepeningThreshold /= 2.0;
+          // this will allow the alg to consider actions whose likelihood is equal to the
+          // next highest *likelihood* of actions at each subject node. e.g. if this number
+          // is 2 and we have 4 actions with likelihoods A: 0.35, B: 0.3, C: 0.3, D: 0.05,
+          // the second highest likelihood is 0.3. Therefore, we will consider
+          // actions A, B, and C but not D which does not meet the threshold of 0.3
+          ++topNActionProbabilty;
         }
       } catch (const MetronomeTimeoutException& timeoutEx) {
-        if (not iterativeDeepening) {
+        if (not iterativeWidening) {
           throw timeoutEx;
         }
       }
@@ -485,9 +488,8 @@ namespace metronome {
       std::copy_if(goalsToPriors.cbegin(),
                    goalsToPriors.cend(),
                    std::back_inserter(possibleGoals),
-                   [&](const auto& mapVal) {
-                     return (not iterativeDeepening and mapVal.second > 0.0)
-                            or mapVal.second > deepeningThreshold;
+                   [](const auto& mapVal) {
+                     return mapVal.second > 0.0;
                    });
 
       if (possibleGoals.size() == 1) {
@@ -616,12 +618,12 @@ namespace metronome {
             invalidIntervention = true;
           }
 
-          // detect change in optimal cost for any goal
+          // detect change in optimal cost for any goal in the goal hypothesis
           for (auto& entry : goalsToOptimalCostCopy) {
             Cost originalCost = entry.second;
             Cost newCost = goalsToOptimalCost[entry.first];
 
-            if (originalCost != newCost) {
+            if (goalHypothesisCopy.count(entry.first) > 0 && originalCost != newCost) {
               invalidIntervention = true;
               break;
             }
@@ -735,7 +737,7 @@ namespace metronome {
       for (const ActionProbability& actionResults : trialResult.potentialSubjectActionOutcomes) {
         Node* successor = actionResults.successor;
         double probability = actionResults.probabilityOfAction;
-        // can happen with iterative deepening algorithm
+        // can happen with iterative widening algorithm
         if (probability == 0.0) {
           continue;
         }
@@ -790,7 +792,7 @@ namespace metronome {
      * @return Each element represents an action an optimal subject could take
      * represented by its successor. Also included are bayesian updated goal posteriors
      * assuming that action is taken and the probability of the action.
-     * When iterativeDeepening is true, this probability could be returned as 0.0.
+     * When iterativeWidening is true, this probability could be returned as 0.0.
      * We do not want to prune it from the vector, however, because we need the
      * goal posterior if the agent does take that action.
      */
@@ -798,22 +800,6 @@ namespace metronome {
         Node* simulatedStateNode,
         std::unordered_map<State, double, StateHash>& conditionedGoalsToPriors) {
       std::vector<ActionProbability> actionResults{};
-      // separate from conditionedGoalsToPriors for iterative deepening scenario
-      // where we discard goals that don't meet the threshold
-      std::unordered_map<State, double, StateHash> actionGoalProbabilities{conditionedGoalsToPriors};
-      if (iterativeDeepening) {
-        double normalizingSum = 0.0;
-        for (auto& goalProbPair : actionGoalProbabilities) {
-          if (goalProbPair.second < deepeningThreshold) {
-            actionGoalProbabilities[goalProbPair.first] = 0.0;
-          } else {
-            normalizingSum += goalProbPair.second;
-          }
-        }
-        for (auto& goalProbPair : actionGoalProbabilities) {
-          actionGoalProbabilities[goalProbPair.first] /= normalizingSum;
-        }
-      }
 
       // special check for if this state is a goal - we say the subject
       // will stay put and we assign the goal's probability to it
@@ -834,10 +820,6 @@ namespace metronome {
             found = true;
 
             actionResult.conditionedGoalPriors[entry.first] = entry.second;
-            // NOTE: not using the actionGoalProbabilities map here on purpose
-            // If the state is a goal, then iterative deepening algorithm does not
-            // want to discount it, no matter how unlikely. It will only deepen
-            // the tree by 1 additional node at most
             actionResult.probabilityOfAction += entry.second;
           } else {
             actionResult.conditionedGoalPriors[entry.first] = 0.0;
@@ -876,8 +858,6 @@ namespace metronome {
         }
 
         actionResult.probabilityOfAction = 0.0;
-
-        double normalizingSum = 0.0;
         // cycle through goal hypothesis of successor
         for (auto& hypothesisEntry : actionResult.successor->goalsToPlanCount) {
           // sanity checks
@@ -898,26 +878,58 @@ namespace metronome {
               fractionOfPlansForGoal * conditionedGoalsToPriors[hypothesisEntry.first];
 
           actionResult.conditionedGoalPriors[hypothesisEntry.first] = conditionedProbability;
-          normalizingSum += conditionedProbability;
-
-          // Term to add to action probability. If not iterative deepening,
-          // identical to conditionedProbability. If iterative deepening, will
-          // only include goals we haven't pruned yet based on our threshold
-          double actionProbabilityTerm =
-              fractionOfPlansForGoal * actionGoalProbabilities[hypothesisEntry.first];
-          actionResult.probabilityOfAction += actionProbabilityTerm;
+          actionResult.probabilityOfAction += conditionedProbability;
         }
 
         // Finally, normalize goal priors based on on the sum of conditioned
         // probabilities
-        if (normalizingSum > 0.0) {
+        if (actionResult.probabilityOfAction > 0.0) {
           for (auto& entry : conditionedGoalsToPriors) {
-            actionResult.conditionedGoalPriors[entry.first] /= normalizingSum;
+            actionResult.conditionedGoalPriors[entry.first] /= actionResult.probabilityOfAction;
           }
         }
       }
+      // only does anything if iterative widening is turned on
+      setActionProbabilitiesIterativeWidening(actionResults);
 
       return actionResults;
+    }
+
+    /**
+     * In iterative widening, re-sets action probabilities based on topNProbabilities
+     * @param actionResults
+     */
+    void setActionProbabilitiesIterativeWidening(std::vector<ActionProbability>& actionResults) {
+      // can return if topNActionProbabilty is greater than vector because we
+      // will not change probabilities in that case
+      if (not iterativeWidening or topNActionProbabilty >= actionResults.size()) return;
+
+      std::vector<double> uniqueProbabilities{};
+      uniqueProbabilities.reserve(actionResults.size());
+      std::transform(actionResults.begin(), actionResults.end(),
+                     std::back_inserter(uniqueProbabilities),
+                     [](const auto& actionProb) { return actionProb.probabilityOfAction; });
+      std::sort(uniqueProbabilities.begin(), uniqueProbabilities.end());
+      auto last = std::unique(uniqueProbabilities.begin(), uniqueProbabilities.end());
+      uniqueProbabilities.erase(last, uniqueProbabilities.end());
+
+      // again, nothing we can do - the lowest likelihood will be the threshold
+      if (topNActionProbabilty > uniqueProbabilities.size()) return;
+
+      double threshold = uniqueProbabilities[topNActionProbabilty - 1];
+      double normalizingSum = 0.0;
+      std::for_each(actionResults.begin(), actionResults.end(),
+                    [&](ActionProbability& actionProbability) {
+                      if (actionProbability.probabilityOfAction < threshold) {
+                        actionProbability.probabilityOfAction = 0.0;
+                      } else {
+                        normalizingSum += actionProbability.probabilityOfAction;
+                      }
+                    });
+      std::for_each(actionResults.begin, actionResults.end(),
+                    [&](ActionProbability& actionProbability) {
+                      actionProbability.probabilityOfAction /= normalizingSum;
+                    });
     }
 
     /*****************************************
@@ -1077,13 +1089,15 @@ namespace metronome {
     uint32_t depth{0};
 
     /**
-     * If true (controlled by config), algorithm uses an iterative deepening strategy.
-     * Branches are ignored if goal probabilities do not meet a minimum threshold.
-     * In subsequent iterations, the threshold is reduced. We continue to iterate until
-     * time runs out. Iteration time is controlled by "action duration" config
+     * If true (controlled by config), algorithm uses an iterative widening strategy.
+     * Branches are ignored if probabilities of actions do not meet a minimum threshold
+     * based on top n likelihood values.
+     * In subsequent iterations, the threshold is reduced by increasing n.
+     * We continue to iterate until time runs out. Iteration time is controlled
+     * by "action duration" config
      */
-    bool iterativeDeepening;
-    double deepeningThreshold{0.0};
+    bool iterativeWidening;
+    size_t topNActionProbabilty{1};
     int64_t planningIterationTimeLimit{0};
     /**
      * Vector holds predicted outcomes given an intervention.
