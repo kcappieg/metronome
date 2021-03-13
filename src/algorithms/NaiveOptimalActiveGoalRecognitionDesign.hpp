@@ -27,7 +27,7 @@
 #include "utils/TimeMeasurement.hpp"
 #include "experiment/termination/TimeTerminationChecker.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 2
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 6
 
 namespace metronome {
@@ -119,7 +119,7 @@ namespace metronome {
         }
         if (!transitioned) {
           throw MetronomeException(
-              "Unexpected transition! The Subject transitioned to a state the Observer did not expect");
+              "Unexpected transition! The Subject transitioned to a state the Observer did not expect (follow-up)");
         }
       }
 
@@ -184,6 +184,9 @@ namespace metronome {
       }
 
       LOG(DEBUG) << "Intervention score: " << incumbent->score;
+      if (iterativeWidening) {
+        LOG(DEBUG) << "Finished iterations: " << topNActionProbabilty - 1;
+      }
 
       std::optional<InterventionBundle<Domain>> intervention = incumbent->bestIntervention;
       potentialOutcomes = incumbent->potentialSubjectActionOutcomes;
@@ -681,7 +684,7 @@ namespace metronome {
 
         if (trialIsBetter(actionTrialResult.score, trialResult.score) or
             // prefer identity interventions when there is a tie
-            (trialResult.score - actionTrialResult.score < std::numeric_limits<double>::epsilon()
+            (std::abs(trialResult.score - actionTrialResult.score) < std::numeric_limits<double>::epsilon()
              and interventionBundle.intervention == domain->getIdentityIntervention())) {
           trialResult.score = actionTrialResult.score;
           trialResult.bestIntervention.emplace(interventionBundle);
@@ -926,7 +929,7 @@ namespace metronome {
                         normalizingSum += actionProbability.probabilityOfAction;
                       }
                     });
-      std::for_each(actionResults.begin, actionResults.end(),
+      std::for_each(actionResults.begin(), actionResults.end(),
                     [&](ActionProbability& actionProbability) {
                       actionProbability.probabilityOfAction /= normalizingSum;
                     });

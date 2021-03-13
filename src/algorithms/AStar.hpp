@@ -3,15 +3,17 @@
 #include <easylogging++.h>
 #include <MemoryConfiguration.hpp>
 #include <domains/Traffic.hpp>
-#include <unordered_map>
 #include <utils/PriorityQueue.hpp>
-#include <vector>
 #include "OfflinePlanner.hpp"
 #include "Planner.hpp"
 #include "experiment/Configuration.hpp"
 #include "utils/Hash.hpp"
 #include "utils/ObjectPool.hpp"
 #include "visualization/Visualizer.hpp"
+
+#include <unordered_map>
+#include <random>
+#include <vector>
 
 namespace metronome {
 
@@ -23,11 +25,17 @@ class AStar final : public OfflinePlanner<Domain> {
   using Planner = metronome::Planner<Domain>;
   
  public:
-  AStar(const Domain& domain, const Configuration& = {})
-      : domain(domain), openList(Memory::OPEN_LIST_SIZE, fValueComparator) {
+  AStar(const Domain& domain, const Configuration& config = {})
+      : domain(domain), openList(Memory::OPEN_LIST_SIZE, fValueComparator),
+        randomTieBreak{config.getBool(RANDOM_TIE_BREAKING, false)}
+  {
     // Initialize hash table
     nodes.max_load_factor(1);
     nodes.reserve(Memory::NODE_LIMIT);
+
+    if (randomTieBreak) {
+      randEngine.seed(config.getLong(SEED, 0));
+    }
   }
 
   std::vector<Action> plan(const State& startState) override {
@@ -61,7 +69,12 @@ class AStar final : public OfflinePlanner<Domain> {
         return actions;
       }
 
-      for (auto successor : domain.successors(currentNode->state)) {
+      auto successors = domain.successors(currentNode->state);
+      if (randomTieBreak) {
+        std::shuffle(successors.begin(), successors.end(), randEngine);
+      }
+
+      for (auto successor : successors) {
         if (successor.state == currentNode->state) {
           continue;  // Skip parent TODO this might be unnecessary
         }
@@ -141,6 +154,10 @@ class AStar final : public OfflinePlanner<Domain> {
   PriorityQueue<Node> openList;
   std::unordered_map<State, Node*, typename metronome::Hash<State>> nodes;
   ObjectPool<Node, Memory::NODE_LIMIT> nodePool;
+
+  /** If true, breaks ties between actions randomly */
+  bool randomTieBreak;
+  std::mt19937_64 randEngine{};
 
   Visualizer visualizer;
 };

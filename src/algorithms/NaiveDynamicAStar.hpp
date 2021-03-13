@@ -20,7 +20,7 @@ namespace metronome {
     typedef typename Planner<Domain>::ActionBundle ActionBundle;
     typedef typename Domain::State State;
 
-    NaiveDynamicAStar(const Domain&, const Configuration&) {}
+    NaiveDynamicAStar(const Domain&, const Configuration& config) : config_{config} {}
 
     /**
      * Replan by invoking AStar from the current state
@@ -33,7 +33,7 @@ namespace metronome {
             const State& currentState,
             const std::vector<State>&,
             const Domain& domain) override {
-      AStar<Domain> planner(domain);
+      AStar<Domain> planner(domain, config_);
       std::vector<typename Domain::Action> plan = planner.plan(currentState);
 
       std::vector<ActionBundle> planWithCost;
@@ -45,6 +45,7 @@ namespace metronome {
       return planWithCost;
     }
   private:
+   const Configuration& config_;
   };
 
 } // namespace metronome

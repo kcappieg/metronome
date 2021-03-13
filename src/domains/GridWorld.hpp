@@ -83,6 +83,10 @@ class GridWorld {
       return os << action.toString();
     }
 
+    friend void swap(Action& lhs, Action& rhs) {
+      std::swap(lhs.label, rhs.label);
+    }
+
    private:
     char label;
   };
@@ -125,7 +129,7 @@ class GridWorld {
     /*State(x,y) representation*/
     unsigned int x;
     unsigned int y;
-    /*Function facilitating operator==*/
+
     friend void swap(State& first, State& second) {
       using std::swap;
       swap(first.x, second.x);

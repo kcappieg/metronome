@@ -245,10 +245,15 @@ class Visualizer:
             rows += 1
             line = self._source_file.readline()
 
-        # if observer is obscured by agent, assume they occupy the same space
+        # if observer is obscured by agent, grab observer's last known location
+        observer_obscured = False
         if observer is None and self._last_frame is not None and self._last_frame['observer'] is not None:
-            observer = (self._last_frame['agent'][0] - agent_offset + observer_offset,
-                        self._last_frame['agent'][1] - agent_offset + observer_offset)
+            observer_obscured = True
+            if self._last_frame['observer_obscured']:
+                observer = self._last_frame['observer']
+            else:
+                observer = (agent[0] - agent_offset + observer_offset,
+                            agent[1] - agent_offset + observer_offset)
 
         return {
             'eof': False,
@@ -256,6 +261,7 @@ class Visualizer:
             'goals': goals,
             'agent': agent,
             'observer': observer,
+            'observer_obscured': observer_obscured,
             'frame_size': (CELL_SIZE * (width), CELL_SIZE * (rows))
         }
 

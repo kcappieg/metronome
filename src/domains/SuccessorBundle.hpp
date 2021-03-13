@@ -14,15 +14,22 @@ class SuccessorBundle {
   SuccessorBundle(State state, Action action, Cost actionCost)
       : state(state), action(action), actionCost(actionCost) {}
 
-  const State state;
-  const Action action;
-  const Cost actionCost;
+  State state;
+  Action action;
+  Cost actionCost;
 
     friend std::ostream& operator<<(std::ostream& os, const SuccessorBundle& bundle) {
       os << "SuccessorBundle - state: " << bundle.state
          << ", action: " << bundle.action
          << ", cost: " << bundle.actionCost;
       return os;
+    }
+
+    friend void swap(SuccessorBundle& lhs, SuccessorBundle& rhs) {
+      using std::swap;
+      swap(lhs.state, rhs.state);
+      swap(lhs.action, rhs.action);
+      swap(lhs.actionCost, rhs.actionCost);
     }
 };
 

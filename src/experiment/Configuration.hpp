@@ -60,6 +60,9 @@ static const std::string LOOKAHEAD_DYNAMIC{"DYNAMIC"};
 static const std::string COMMITMENT_SINGLE{"SINGLE"};
 static const std::string COMMITMENT_MULTIPLE{"MULTIPLE"};
 
+// General
+static const std::string RANDOM_TIE_BREAKING{"randomTieBreaking"};
+
 // GRD
 static const std::string INTERVENTION_COST{"interventionCost"};
 static const std::string GOAL_PRIORS{"goalPriors"};
