@@ -76,6 +76,7 @@ set(SOURCE_FILES
 		src/algorithms/TrivialGrdPlanner.hpp
 		src/algorithms/DynamicPlanner.hpp
 		src/algorithms/NaiveDynamicAStar.hpp
+		src/algorithms/AllPlansDynamicAStar.hpp
 		src/algorithms/NaiveOptimalActiveGoalRecognitionDesign.hpp
 		src/domains/KeyGrid.hpp
 		src/domains/GridMap.hpp
@@ -122,6 +123,7 @@ add_definitions(-DENABLE_A_STAR)
 #add_definitions(-DENABLE_TIME_BOUNDED_A_STAR_KEVIN)
 add_definitions(-DENABLE_TRIVIAL_GRD)
 add_definitions(-DENABLE_NAIVE_DYNAMIC)
+add_definitions(-DENABLE_ALL_PLANS_DYNAMIC)
 add_definitions(-DENABLE_NAIVE_OPTIMAL_AGRD)
 
 # Select the possible domains

@@ -50,6 +50,7 @@ static const std::string GRD_ALGORITHM_NAIVE_OPTIMAL{"NAIVE_OPTIMAL_AGRD"};
 
 // Dynamic algs
 static const std::string ALGORITHM_NAIVE_DYNAMIC{"NAIVE_DYNAMIC"};
+static const std::string ALGORITHM_ALL_PLANS_DYNAMIC{"ALL_PLANS_DYNAMIC"};
 
 static const std::string TERMINATION_CHECKER_TIME{"TIME"};
 static const std::string TERMINATION_CHECKER_EXPANSION{"EXPANSION"};

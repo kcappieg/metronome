@@ -1,11 +1,10 @@
 {
   "algorithmName": "NAIVE_OPTIMAL_AGRD",
-  "randomTieBreaking": true,
   "seed": 42236563,
   "actionDuration": 1000000,
   "interventionCost": 1,
   "terminationType": "TIME",
-  "subjectAlgorithm": "NAIVE_DYNAMIC",
+  "subjectAlgorithm": "ALL_PLANS_DYNAMIC",
   "timeLimit": 900000000000,
   "heuristicMultiplier": 1.0,
   "weight": 1.0,

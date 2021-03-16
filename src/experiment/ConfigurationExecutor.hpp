@@ -60,6 +60,9 @@
 #ifdef ENABLE_NAIVE_DYNAMIC
 #include "algorithms/NaiveDynamicAStar.hpp"
 #endif
+#ifdef ENABLE_ALL_PLANS_DYNAMIC
+#include "algorithms/AllPlansDynamicAStar.hpp"
+#endif
 
 namespace metronome {
 
@@ -364,6 +367,12 @@ class ConfigurationExecutor {
 #ifdef ENABLE_NAIVE_DYNAMIC
     if (subjectAlgorithm == ALGORITHM_NAIVE_DYNAMIC) {
       GrdExperiment<Domain, GrdPlanner, NaiveDynamicAStar<Domain>> grdPlanManager(configuration);
+      return grdPlanManager.plan(configuration, domain, planner);
+    }
+#endif
+#ifdef ENABLE_ALL_PLANS_DYNAMIC
+    if (subjectAlgorithm == ALGORITHM_ALL_PLANS_DYNAMIC) {
+      GrdExperiment<Domain, GrdPlanner, AllPlansDynamicAStar<Domain>> grdPlanManager(configuration);
       return grdPlanManager.plan(configuration, domain, planner);
     }
 #endif
