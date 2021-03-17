@@ -139,6 +139,7 @@ namespace metronome {
       // Set widening threshold to consider actions whose likelihood equals
       // the most likely action.
       topNActionProbabilty = 1;
+      actionsPruned = 0;
 
       // Store optimal plan lengths, but only on first iteration
       if (recomputeOptimalIteration == 1) {
@@ -216,9 +217,11 @@ namespace metronome {
       auto iterationRuntime = currentNanoTime() - iterationStartTime;
       if (storeFirstIterationRuntime) {
         Base::recordAttribute("firstIterationRuntime", iterationRuntime);
+        Base::recordAttribute("firstIterationActionsPruned", actionsPruned);
       }
       // also keep average (mostly for iterative deepening)
       Base::recordAttribute("iterationRuntime", iterationRuntime);
+      Base::recordAttribute("actionsPruned", actionsPruned);
 
       if (not intervention) {
         // The experiment runner will implicitly choose "identity"
@@ -927,7 +930,8 @@ namespace metronome {
       std::transform(actionResults.begin(), actionResults.end(),
                      std::back_inserter(uniqueProbabilities),
                      [](const auto& actionProb) { return actionProb.probabilityOfAction; });
-      std::sort(uniqueProbabilities.begin(), uniqueProbabilities.end());
+      std::sort(uniqueProbabilities.begin(), uniqueProbabilities.end(),
+                [](const double lhs, const double rhs) { return lhs > rhs; });
       auto last = std::unique(uniqueProbabilities.begin(), uniqueProbabilities.end());
       uniqueProbabilities.erase(last, uniqueProbabilities.end());
 
@@ -939,6 +943,9 @@ namespace metronome {
       std::for_each(actionResults.begin(), actionResults.end(),
                     [&](ActionProbability& actionProbability) {
                       if (actionProbability.probabilityOfAction < threshold) {
+                        if (actionProbability.probabilityOfAction > 0.0) {
+                          ++actionsPruned;
+                        }
                         actionProbability.probabilityOfAction = 0.0;
                       } else {
                         normalizingSum += actionProbability.probabilityOfAction;
@@ -1105,6 +1112,7 @@ namespace metronome {
     std::unordered_map<State, Cost, StateHash> goalsToOptimalCost{};
     uint64_t recomputeOptimalIteration{0};
     uint32_t depth{0};
+    uint64_t actionsPruned{0}; // for iterative widening
 
     /**
      * If true (controlled by config), algorithm uses an iterative widening strategy.
