@@ -27,7 +27,7 @@
 #include "utils/TimeMeasurement.hpp"
 #include "experiment/termination/TimeTerminationChecker.hpp"
 
-#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 2
+#define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_DEBUG_TRACE 0
 #define NAIVEOPTIMALACTIVEGOALRECOGNITIONDESIGN_LOG_TO_DEPTH 6
 
 namespace metronome {
@@ -180,6 +180,21 @@ namespace metronome {
       } catch (const MetronomeTimeoutException& timeoutEx) {
         if (not iterativeWidening) {
           throw timeoutEx;
+        }
+        // Yet another band-aid for a bug.
+        // The process was interrupted, so we have to repair the goalsToOptimalCost
+        // member of each successor node. This will be re-repaired on the next invocation
+        // to recomputeOptimalInfo
+        for (ActionProbability& actionProbability : incumbent->potentialSubjectActionOutcomes) {
+          Node* successor = actionProbability.successor;
+          successor->goalsToPlanCount.clear();
+
+          // just set all of them to 1
+          for (auto& entry : actionProbability.conditionedGoalPriors) {
+            if (entry.second > 0.0) {
+              successor->goalsToPlanCount[entry.first] = 1;
+            }
+          }
         }
       }
 

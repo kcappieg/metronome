@@ -51,6 +51,7 @@ class AllPlansDynamicAStar final : public DynamicPlanner<Domain> {
     openList.clear();
     openList.reorder(fComparator<Node>);
     Node* root = getSuccessor(domain, currentState);
+    root->g = 0;
 
     openList.push(*root);
     Cost finalFLayer = std::numeric_limits<Cost>::max(); ///< Explore this entire F-layer (when we find it)
