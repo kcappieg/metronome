@@ -14,15 +14,15 @@ __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 # flags for changing script behavior
 ENABLE_SLACK_NOTIFICATION = True
-SLACK_CHANNEL = '#experiments'
+SLACK_CHANNEL = '#kevin-experiments'
 
-EXECUTE_REMOTE = True
+EXECUTE_REMOTE = False
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
 LOCAL_THREADS = 14  # Number of local threads if not executing on remote servers
 LOCAL_MACHINE_NAME = 'byodoin.cs.unh.edu'
 
-time_limit_seconds = 60 * 60  # time limit for experiments
+time_limit_seconds = 60 * 60  # time limit for experiments - 1 hour
 
 
 def generate_base_configuration():
@@ -31,10 +31,11 @@ def generate_base_configuration():
     # required configuration parameters
     algorithms_to_run = ['NAIVE_OPTIMAL_AGRD']
     lookahead_type = ['DYNAMIC']
-    time_limit = [time_limit_seconds * 1000000000]  # as nanoseconds
-    action_durations = [1]  # Use this for A*
+    time_limit = [time_limit_seconds * 1_000_000_000]  # as nanoseconds
+    # action_durations = [1]  # Use this for A*
+    action_durations = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]  # ns
 
-    termination_types = ['EXPANSION']
+    termination_types = ['TIME']
     # expansion_limit = [100000000]
 
     base_configuration = dict()
@@ -45,10 +46,10 @@ def generate_base_configuration():
     base_configuration['terminationType'] = termination_types
     base_configuration['timeLimit'] = time_limit
     base_configuration['commitmentStrategy'] = ['SINGLE']
-    base_configuration['commitmentStrategy'] = ['MULTIPLE']
+    # base_configuration['commitmentStrategy'] = ['MULTIPLE']
     base_configuration['heuristicMultiplier'] = [1.0]
     base_configuration['weight'] = [1.0]
-    # base_configuration['terminationTimeEpsilon'] = [5000000]  # 5ms
+    # base_configuration['terminationTimeEpsilon'] = [5_000_000]  # 5ms
 
     compiled_configurations = [{}]
 
@@ -66,7 +67,7 @@ def generate_base_configuration():
                                                   'WEIGHTED_A_STAR']])
 
     # AGRD configurations
-    subject_algorithms = ['NAIVE_DYNAMIC']
+    subject_algorithms = ['ALL_PLANS_DYNAMIC']
     compiled_configurations = cartesian_product(compiled_configurations,
                                                 'subjectAlgorithm', subject_algorithms,
                                                 [['algorithmName',
@@ -75,6 +76,20 @@ def generate_base_configuration():
     intervention_costs = [1]
     compiled_configurations = cartesian_product(compiled_configurations,
                                                 'interventionCost', intervention_costs,
+                                                [['algorithmName',
+                                                  'NAIVE_OPTIMAL_AGRD']])
+
+    iterative_widening = [True, False]
+    compiled_configurations = cartesian_product(compiled_configurations,
+                                                'grdIterativeWidening', iterative_widening,
+                                                [['algorithmName',
+                                                  'NAIVE_OPTIMAL_AGRD']])
+
+    # 10 seeds. Should be enough...
+    seeds = [4002326368, 2758212009, 3710981193, 2660714033, 3685384885,
+             3949298516, 3064535188, 3829612148, 2438865198, 1400649160]
+    compiled_configurations = cartesian_product(compiled_configurations,
+                                                'seed', seeds,
                                                 [['algorithmName',
                                                   'NAIVE_OPTIMAL_AGRD']])
 
@@ -124,9 +139,12 @@ def generate_agrd_configs():
     for goal_count in range(2, 5):
         configs_with_priors = cartesian_product(gw_configs, 'goalPriors',
                                                 [priors_by_goal_count[goal_count]])
-        # WARNING: disabling other domain configs here
-        # configurations += cartesian_product(configs_with_priors, 'domainPath',
-        #                                     paths_by_goal_count[goal_count])
+        # config for each goal
+        configs_with_priors = cartesian_product(configs_with_priors, 'subjectGoal',
+                                                list(range(goal_count)))
+
+        configurations += cartesian_product(configs_with_priors, 'domainPath',
+                                            paths_by_goal_count[goal_count])
 
     # reset
     # TODO: split into 2 functions here
@@ -147,6 +165,9 @@ def generate_agrd_configs():
     for goal_count in range(2, 5):
         configs_with_priors = cartesian_product(log_configs, 'goalPriors',
                                                 [priors_by_goal_count[goal_count]])
+        # config for each goal
+        configs_with_priors = cartesian_product(configs_with_priors, 'subjectGoal',
+                                                list(range(goal_count)))
         configurations += cartesian_product(configs_with_priors, 'domainPath',
                                             paths_by_goal_count[goal_count])
 
@@ -399,7 +420,7 @@ def main():
         raise Exception('Build failed.')
     print('Build complete!')
 
-    file_name = 'results/grd-logistics-2-25-21.json'
+    file_name = 'results/grd-test.json'
 
     if recycle:
         # Load previous configurations
@@ -414,7 +435,7 @@ def main():
         # configurations = config_from_file('resources/configuration/grd.json')
 
         label_algorithms(configurations)
-        # configurations = configurations[:1]  # debug - keep only one config
+        configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
     # print(configurations)
