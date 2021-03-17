@@ -33,7 +33,6 @@ def generate_base_configuration():
     lookahead_type = ['DYNAMIC']
     time_limit = [time_limit_seconds * 1_000_000_000]  # as nanoseconds
     # action_durations = [1]  # Use this for A*
-    action_durations = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]  # ns
 
     termination_types = ['TIME']
     # expansion_limit = [100000000]
@@ -42,7 +41,7 @@ def generate_base_configuration():
     base_configuration['algorithmName'] = algorithms_to_run
     # base_configuration['expansionLimit'] = expansion_limit
     base_configuration['lookaheadType'] = lookahead_type
-    base_configuration['actionDuration'] = action_durations
+    # base_configuration['actionDuration'] = action_durations
     base_configuration['terminationType'] = termination_types
     base_configuration['timeLimit'] = time_limit
     base_configuration['commitmentStrategy'] = ['SINGLE']
@@ -84,6 +83,19 @@ def generate_base_configuration():
                                                 'grdIterativeWidening', iterative_widening,
                                                 [['algorithmName',
                                                   'NAIVE_OPTIMAL_AGRD']])
+
+    optimal_action_durations = [1]
+    iter_widening_action_durations = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]  # ns
+    compiled_configurations = cartesian_product(compiled_configurations,
+                                                'actionDuration', optimal_action_durations,
+                                                [['algorithmName',
+                                                  'NAIVE_OPTIMAL_AGRD'],
+                                                 ['grdIterativeWidening', False]])
+    compiled_configurations = cartesian_product(compiled_configurations,
+                                                'actionDuration', iter_widening_action_durations,
+                                                [['algorithmName',
+                                                  'NAIVE_OPTIMAL_AGRD'],
+                                                 ['grdIterativeWidening', True]])
 
     # 10 seeds. Should be enough...
     seeds = [4002326368, 2758212009, 3710981193, 2660714033, 3685384885,
