@@ -27,8 +27,8 @@ def main(paths, configs):
         print(f'Domain {title}\n')
 
         data = prepare_data(paths, domain_filter)
-        # plot_runtime(data, title, file_name)
-        plot_scatter(data, title, file_name)
+        # plot_optimal_runtime(data, title, file_name)
+        plot_optimal_scatter(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
@@ -41,9 +41,11 @@ def prepare_data(paths, domain_filter):
         data = data[data.domainPath.str.contains(domain_filter, regex=False)]
 
     # get rid of timeouts
-    timeouts = data[~data.success]
+    errors = data[~data.success]
     data = data[data.success]
-    print(len(timeouts), 'Failed instances')
+    print(len(errors), 'Failed instances')
+    error_messages = errors['errorMessage'].unique()
+    print(f'Debug here to see {len(error_messages)} unique error messages')
     remove_unused_columns(data, [
         'actionDuration', 'actionExecutionTime', 'commitmentStrategy', 'errorMessage',
         'goalAchievementTime', 'heuristicMultiplier', 'identityActions', 'idleIterationCount',
@@ -57,6 +59,7 @@ def prepare_data(paths, domain_filter):
     # remove depth=0. Could happen if instance starts in goal configuration
     # such instances should be filtered out of experiments... but bandaid here instead
     data = data[data.depthUpperBound > 0]
+    print(f'Instances where depthUpperBound > 0: {len(data)}')
     # remove depth>6 for grid world b/c no grid world could complete depth >= 6 without timing out
     # some instances.
     data = data[
@@ -72,6 +75,39 @@ def prepare_data(paths, domain_filter):
 
     data['runtime_axis'] = data['logRuntime'] if PLOT_LOG else data['firstIterationRuntime_ms']
 
+    data = extract_quality_metrics(data)
+    print(f'Instances with optimal comparison: {len(data)}')
+
+    return data
+
+
+def extract_quality_metrics(data):
+    # first, extract the actual metric
+    # This is for fraction of optimal
+
+    # fix cases where goal was never reported
+    adjustment_reported_iteration = data[data.goalReportedIteration == 0].pathLength
+    data.loc[data.goalReportedIteration == 0, 'goalReportedIteration'] = adjustment_reported_iteration
+    data['fractionOfPath'] = data.goalReportedIteration / data.pathLength
+
+    # mark all instances that represent optimal AGRD
+    data['isOptimal'] = data['grdIterativeWidening'] == False # noqa
+
+    optimal_data = data[data['isOptimal'] == True] # noqa
+
+    # average the optimal results for a given domain.
+    # e.g. if 10 seeds for each subject goal, we should have 20 instances for 2-goal scene
+    avg_achieved_by_domain = optimal_data.groupby('domainPath').fractionOfPath.mean()
+    avg_achieved_by_domain.name = 'avgOptimalFractionOfPath'
+    data = data.merge(avg_achieved_by_domain, how='inner', on='domainPath', copy=False)
+
+    # remove any instances where we don't have an optimal baseline
+    data = data[data['avgOptimalFractionOfPath'] > 0]  # should filter out NaNs, which could be for timed out instances
+
+    # deviation from average optimal baseline. Negative means better
+    magnitude_deviation_from_baseline = data['fractionOfPath'] - data['avgOptimalFractionOfPath']
+    data['percentDeviationFromBaseline'] = magnitude_deviation_from_baseline / data['avgOptimalFractionOfPath']
+
     return data
 
 
@@ -82,7 +118,7 @@ def add_depth_upper_bound(data):
         second_most = 0
         idx = 0
         while f'Goal_{idx}' in row:
-            cost = row[f'Goal_{idx}']
+            cost = row[f'Goal_{idx}'] / row['actionDuration']
             if cost > most:
                 second_most = most
                 most = cost
@@ -101,7 +137,9 @@ def add_num_goals(data):
     data['numGoals'] = num_goals_series
 
 
-def plot_runtime(data, title, file_name):
+def plot_optimal_runtime(data, title, file_name):
+    data = data[data['isOptimal'] == True]  # noqa
+
     results = DataFrame(
         columns="depthUpperBound runtime algorithmName lbound rbound numInstances".split()
     )
@@ -163,7 +201,9 @@ def plot_runtime(data, title, file_name):
     plt.show()
 
 
-def plot_scatter(data, title, file_name):
+def plot_optimal_scatter(data, title, file_name):
+    data = data[data['isOptimal'] == True]  # noqa
+
     # TODO: Bar plot w/ confidence. Depth is category, num goals is category that creates bars
     # y is avg runtime, confidence over that should hopefully overlap
     fig, ax = plt.subplots()
@@ -204,6 +244,17 @@ def plot_scatter(data, title, file_name):
     plt.show()
 
 
+def plot_suboptimal_comparison():
+    data = data[data['isOptimal'] == False]  # noqa
+    if len(data) == 0:
+        return
+
+    # TODO: plot quality of solution as a function of allowable time
+    # Different line (different figure?) for every depth bound
+    # Average by time bound, 95% confidence intervals
+    # Use 'percentDeviationFromBaseline' as metric
+
+
 def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero = 1):
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
     ticks += [10 ** num for num in range(num_levels_zero_above)]
@@ -219,7 +270,7 @@ def set_x_ticks(plot, data, field_name):
 
 
 if __name__ == "__main__":
-    main(['../results/grd-rooms-uniform-1-9-20.json', '../results/grd-logistics-2-25-21.json'],
+    main(['../results/grd-3-16-21_optimal_vs_suboptimal-fraction_of_path.json'],
          [
              # {
              #     'title': 'Uniform Gridworld',
@@ -231,14 +282,14 @@ if __name__ == "__main__":
              #     'file_name': 'rooms',
              #     'domain_filter': 'grd/rooms'
              # },
+             # {
+             #     'title': 'Logistics',
+             #     'file_name': 'logistics',
+             #     'domain_filter': 'logistics'
+             # },
              {
-                 'title': 'Logistics',
-                 'file_name': 'logistics',
-                 'domain_filter': 'logistics'
-                 # },
-                 # {
-                 #     'title': 'Optimal AGRD Complexity',
-                 #     'file_name': 'all',
-                 #     'domain_filter': None
+                     'title': 'Optimal AGRD Complexity',
+                     'file_name': 'all',
+                     'domain_filter': None
              }
          ])
