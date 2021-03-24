@@ -19,25 +19,25 @@ PLOT_LOG = True
 
 def main(paths, configs):
     set_rc()
-    idx = 0
+    # initial load of all data
+    results = []
+    for path_name in paths:
+        results += read_data(path_name)
+
+    data = construct_data_frame(results)
     for config in configs:
         title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
 
         print('\n========================================')
         print(f'Domain {title}\n')
 
-        data = prepare_data(paths, domain_filter)
-        # plot_optimal_runtime(data, title, file_name)
-        # plot_optimal_scatter(data, title, file_name)
-        plot_suboptimal_comparison(data, title, file_name)
+        domain_specific_data = prepare_data(data, domain_filter)
+        # plot_optimal_runtime(domain_specific_data, title, file_name)
+        # plot_optimal_scatter(domain_specific_data, title, file_name)
+        plot_suboptimal_comparison(domain_specific_data, title, file_name)
 
 
-def prepare_data(paths, domain_filter):
-    results = []
-    for path_name in paths:
-        results += read_data(path_name)
-
-    data = construct_data_frame(results)
+def prepare_data(data, domain_filter):
     if domain_filter is not None:
         data = data[data.domainPath.str.contains(domain_filter, regex=False)]
 
