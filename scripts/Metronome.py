@@ -14,15 +14,17 @@ __author__ = 'Bence Cserna, William Doyle, Kevin C. Gall'
 
 # flags for changing script behavior
 ENABLE_SLACK_NOTIFICATION = True
-SLACK_CHANNEL = '#kevin-experiments'
+SLACK_CHANNEL = '#experiments'
 
-EXECUTE_REMOTE = False
+EXECUTE_REMOTE = True
 REMOTE_HOSTS = ['ai' + str(i) + '.cs.unh.edu' for i in
                 [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]]
 LOCAL_THREADS = 14  # Number of local threads if not executing on remote servers
 LOCAL_MACHINE_NAME = 'byodoin.cs.unh.edu'
 
 time_limit_seconds = 60 * 60  # time limit for experiments - 1 hour
+results_file_name = 'results/grd-3-23-21_optimal.json'
+test_run = True
 
 
 def generate_base_configuration():
@@ -78,7 +80,10 @@ def generate_base_configuration():
                                                 [['algorithmName',
                                                   'NAIVE_OPTIMAL_AGRD']])
 
-    iterative_widening = [True, False]
+    iterative_widening = [
+        False
+        # True
+    ]
     compiled_configurations = cartesian_product(compiled_configurations,
                                                 'grdIterativeWidening', iterative_widening,
                                                 [['algorithmName',
@@ -430,9 +435,7 @@ def main():
 
     if not build_metronome():
         raise Exception('Build failed.')
-    print('Build complete!')
-
-    file_name = 'results/grd-test.json'
+    print('Build complete!') 
 
     if recycle:
         # Load previous configurations
@@ -447,7 +450,8 @@ def main():
         # configurations = config_from_file('resources/configuration/grd.json')
 
         label_algorithms(configurations)
-        configurations = configurations[:1]  # debug - keep only one config
+        if test_run:
+            configurations = configurations[:1]  # debug - keep only one config
 
     print('{} configurations has been generated '.format(len(configurations)))
     # print(configurations)
@@ -466,7 +470,7 @@ def main():
         result.pop('actions', None)
         result.pop('systemProperties', None)
 
-    save_results(results, file_name)
+    save_results(results, results_file_name)
     print_summary(results)
 
     print('{} results has been received.'.format(len(results)))
