@@ -28,7 +28,8 @@ def main(paths, configs):
 
         data = prepare_data(paths, domain_filter)
         # plot_optimal_runtime(data, title, file_name)
-        plot_optimal_scatter(data, title, file_name)
+        # plot_optimal_scatter(data, title, file_name)
+        plot_suboptimal_comparison(data, title, file_name)
 
 
 def prepare_data(paths, domain_filter):
@@ -47,7 +48,7 @@ def prepare_data(paths, domain_filter):
     error_messages = errors['errorMessage'].unique()
     print(f'Debug here to see {len(error_messages)} unique error messages')
     remove_unused_columns(data, [
-        'actionDuration', 'actionExecutionTime', 'commitmentStrategy', 'errorMessage',
+        'actionExecutionTime', 'commitmentStrategy', 'errorMessage',
         'goalAchievementTime', 'heuristicMultiplier', 'identityActions', 'idleIterationCount',
         'idlePlanningTime', 'normalizedGoalAchievementTime', 'weight'
     ])
@@ -90,23 +91,25 @@ def extract_quality_metrics(data):
     data.loc[data.goalReportedIteration == 0, 'goalReportedIteration'] = adjustment_reported_iteration
     data['fractionOfPath'] = data.goalReportedIteration / data.pathLength
 
+    # isolate each scene with the subject's true goal
+    data['domainPathWithGoal'] = data.domainPath.map(str) + data.subjectGoal.map(str) + data.seed.map(str)
+
     # mark all instances that represent optimal AGRD
     data['isOptimal'] = data['grdIterativeWidening'] == False # noqa
-
     optimal_data = data[data['isOptimal'] == True] # noqa
 
     # average the optimal results for a given domain.
     # e.g. if 10 seeds for each subject goal, we should have 20 instances for 2-goal scene
-    avg_achieved_by_domain = optimal_data.groupby('domainPath').fractionOfPath.mean()
+    avg_achieved_by_domain = optimal_data.groupby('domainPathWithGoal').fractionOfPath.mean()
     avg_achieved_by_domain.name = 'avgOptimalFractionOfPath'
-    data = data.merge(avg_achieved_by_domain, how='inner', on='domainPath', copy=False)
+    data = data.merge(avg_achieved_by_domain, how='inner', on='domainPathWithGoal', copy=False)
 
     # remove any instances where we don't have an optimal baseline
     data = data[data['avgOptimalFractionOfPath'] > 0]  # should filter out NaNs, which could be for timed out instances
 
     # deviation from average optimal baseline. Negative means better
-    magnitude_deviation_from_baseline = data['fractionOfPath'] - data['avgOptimalFractionOfPath']
-    data['percentDeviationFromBaseline'] = magnitude_deviation_from_baseline / data['avgOptimalFractionOfPath']
+    deviation_from_baseline = data['fractionOfPath'] - data['avgOptimalFractionOfPath']
+    data['percentDeviationFromBaseline'] = deviation_from_baseline / data['avgOptimalFractionOfPath']
 
     return data
 
@@ -203,6 +206,8 @@ def plot_optimal_runtime(data, title, file_name):
 
 def plot_optimal_scatter(data, title, file_name):
     data = data[data['isOptimal'] == True]  # noqa
+    if len(data) == 0:
+        return
 
     # TODO: Bar plot w/ confidence. Depth is category, num goals is category that creates bars
     # y is avg runtime, confidence over that should hopefully overlap
@@ -244,15 +249,64 @@ def plot_optimal_scatter(data, title, file_name):
     plt.show()
 
 
-def plot_suboptimal_comparison():
+def plot_suboptimal_comparison(data, title, file_name):
     data = data[data['isOptimal'] == False]  # noqa
     if len(data) == 0:
         return
+
+    results = DataFrame(
+        columns="timeBound percentDeviationFromBaseline algorithmName lbound rbound".split()
+    )
+
+    for fields, depth_group in data.groupby(['depthUpperBound', 'actionDuration']):
+        if len(depth_group) == 1:
+            # no way to compute confidence interval
+            continue
+
+        alg_name = 'IW-AGRD (Depth ' + str(fields[0]) + ')'
+        if alg_name in alg_map:
+            alg_name = alg_map[alg_name]
+
+        # confidence
+        mean_deviation = depth_group['percentDeviationFromBaseline'].mean()
+        deviation_list = list(depth_group['percentDeviationFromBaseline'])
+        bound = sms.DescrStatsW(deviation_list).zconfint_mean()
+        results = add_row(results,
+                          [fields[1] / 1e6, mean_deviation, alg_name,
+                           abs(mean_deviation - bound[0]),
+                           abs(mean_deviation - bound[1])])
 
     # TODO: plot quality of solution as a function of allowable time
     # Different line (different figure?) for every depth bound
     # Average by time bound, 95% confidence intervals
     # Use 'percentDeviationFromBaseline' as metric
+
+    errors = []
+    for alg, alg_group in results.groupby('algorithmName'):
+        errors.append([alg_group['lbound'].values, alg_group['rbound'].values])
+
+    pivot = results.pivot(index="timeBound", columns="algorithmName",
+                          values="percentDeviationFromBaseline")
+    # pivot = pivot[~pivot.index.duplicated(keep='first')]
+
+    palette = sns.color_palette(n_colors=10)
+    plt_title = title
+    plot = pivot.plot(color=palette, title=plt_title, yerr=errors,
+                      ecolor='black', elinewidth=1,
+                      capsize=4, capthick=1
+                      # , figsize=(3, 3)
+                      )
+    plot.autoscale(True)
+    plot.margins(0.05)
+
+    plot.set_xscale('log')
+    plot.set_xlabel('Iteration Time Bounds (ms)')
+    plot.set_ylabel('Percent Deviation from Optimal Baseline')
+
+    pdf = PdfPages("../results/plots/" + file_name + "_iterative-widening_results.pdf")
+    plt.savefig(pdf, format='pdf', bbox_inches='tight')
+    pdf.close()
+    plt.show()
 
 
 def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero = 1):
@@ -272,24 +326,24 @@ def set_x_ticks(plot, data, field_name):
 if __name__ == "__main__":
     main(['../results/grd-3-16-21_optimal_vs_suboptimal-fraction_of_path.json'],
          [
-             # {
-             #     'title': 'Uniform Gridworld',
-             #     'file_name': 'uniform',
-             #     'domain_filter': 'grd/uniform'
-             # },
-             # {
-             #     'title': 'Rooms Gridworld',
-             #     'file_name': 'rooms',
-             #     'domain_filter': 'grd/rooms'
-             # },
-             # {
-             #     'title': 'Logistics',
-             #     'file_name': 'logistics',
-             #     'domain_filter': 'logistics'
-             # },
              {
-                     'title': 'Optimal AGRD Complexity',
-                     'file_name': 'all',
-                     'domain_filter': None
+                 'title': 'Uniform Gridworld',
+                 'file_name': 'uniform',
+                 'domain_filter': 'grd/uniform'
+             },
+             {
+                 'title': 'Rooms Gridworld',
+                 'file_name': 'rooms',
+                 'domain_filter': 'grd/rooms'
+             },
+             {
+                 'title': 'Logistics',
+                 'file_name': 'logistics',
+                 'domain_filter': 'logistics'
+             # },
+             # {
+             #         'title': 'Optimal AGRD Complexity',
+             #         'file_name': 'all',
+             #         'domain_filter': None
              }
          ])

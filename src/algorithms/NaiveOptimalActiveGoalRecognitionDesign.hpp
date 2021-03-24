@@ -182,19 +182,24 @@ namespace metronome {
         if (not iterativeWidening) {
           throw timeoutEx;
         }
-        // Yet another band-aid for a bug.
-        // The process was interrupted, so we have to repair the goalsToOptimalCost
-        // member of each successor node. This will be re-repaired on the next invocation
-        // to recomputeOptimalInfo
-        for (ActionProbability& actionProbability : incumbent->potentialSubjectActionOutcomes) {
-          Node* successor = actionProbability.successor;
-          successor->goalsToPlanCount.clear();
+      }
 
-          // just set all of them to 1
-          for (auto& entry : actionProbability.conditionedGoalPriors) {
-            if (entry.second > 0.0) {
-              successor->goalsToPlanCount[entry.first] = 1;
-            }
+      // Yet another band-aid for a bug.
+      // The goalsToPlanCount member of each node is very unreliable because of
+      // all the ways that number gets screwed up. Unfortunately, getGoalPrediction
+      // relies on the fact that a state that has only plans to 1 goal is a leaf.
+      // This is a long-standing bug that only cropped up when comparing optimal
+      // with sub-optimal results. Repair this structure here from the
+      // conditionedGoalPriors of possible successors. It will be re-repaired next
+      // iteration.
+      for (ActionProbability& actionProbability : incumbent->potentialSubjectActionOutcomes) {
+        Node* successor = actionProbability.successor;
+        successor->goalsToPlanCount.clear();
+
+        // just set all of them to 1
+        for (auto& entry : actionProbability.conditionedGoalPriors) {
+          if (entry.second > 0.0) {
+            successor->goalsToPlanCount[entry.first] = 1;
           }
         }
       }
