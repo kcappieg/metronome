@@ -19,12 +19,26 @@ PLOT_LOG = True
 
 def main(paths, configs):
     set_rc()
-    # initial load of all data
-    results = []
-    for path_name in paths:
-        results += read_data(path_name)
 
+    print('--------LOAD---------')
+
+    # TODO temp data load until suboptimal is done
+    results = read_data(paths[0])
     data = construct_data_frame(results)
+    print(len(data))
+    data = data[data['grdIterativeWidening']]  # only keep suboptimal results
+    print(len(data))
+
+    results = read_data(paths[1])
+    data = pd.concat([data, construct_data_frame(results)])
+
+    print('--------DONE LOAD---------')
+    # initial load of all data
+    # results = []
+    # for path_name in paths:
+    #     results += read_data(path_name)
+    #
+    # data = construct_data_frame(results)
     for config in configs:
         title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
 
@@ -34,7 +48,8 @@ def main(paths, configs):
         domain_specific_data = prepare_data(data, domain_filter)
         # plot_optimal_runtime(domain_specific_data, title, file_name)
         # plot_optimal_scatter(domain_specific_data, title, file_name)
-        plot_suboptimal_comparison(domain_specific_data, title, file_name)
+        # plot_suboptimal_comparison(domain_specific_data, title, file_name)
+        plot_quality_against_time(domain_specific_data, title, file_name)
 
 
 def prepare_data(data, domain_filter):
@@ -92,7 +107,7 @@ def extract_quality_metrics(data):
     data['fractionOfPath'] = data.goalReportedIteration / data.pathLength
 
     # isolate each scene with the subject's true goal
-    data['domainPathWithGoal'] = data.domainPath.map(str) + data.subjectGoal.map(str) + data.seed.map(str)
+    data['domainPathWithGoal'] = data.domainPath.map(str) + data.subjectGoal.map(str)
 
     # mark all instances that represent optimal AGRD
     data['isOptimal'] = data['grdIterativeWidening'] == False # noqa
@@ -104,12 +119,19 @@ def extract_quality_metrics(data):
     avg_achieved_by_domain.name = 'avgOptimalFractionOfPath'
     data = data.merge(avg_achieved_by_domain, how='inner', on='domainPathWithGoal', copy=False)
 
+    avg_first_runtime_by_domain = optimal_data.groupby('domainPath').firstIterationRuntime.mean()
+    avg_first_runtime_by_domain.name = 'avgOptimalIterationRuntime'
+    data = data.merge(avg_first_runtime_by_domain, how='inner', on='domainPath', copy=False)
+
     # remove any instances where we don't have an optimal baseline
     data = data[data['avgOptimalFractionOfPath'] > 0]  # should filter out NaNs, which could be for timed out instances
 
     # deviation from average optimal baseline. Negative means better
     deviation_from_baseline = data['fractionOfPath'] - data['avgOptimalFractionOfPath']
     data['percentDeviationFromBaseline'] = deviation_from_baseline / data['avgOptimalFractionOfPath']
+
+    # percent timebound / optimal iteration runtime
+    data['percentTimeVsOptimal'] = data['actionDuration'] / data['avgOptimalIterationRuntime']
 
     return data
 
@@ -276,11 +298,6 @@ def plot_suboptimal_comparison(data, title, file_name):
                            abs(mean_deviation - bound[0]),
                            abs(mean_deviation - bound[1])])
 
-    # TODO: plot quality of solution as a function of allowable time
-    # Different line (different figure?) for every depth bound
-    # Average by time bound, 95% confidence intervals
-    # Use 'percentDeviationFromBaseline' as metric
-
     errors = []
     for alg, alg_group in results.groupby('algorithmName'):
         errors.append([alg_group['lbound'].values, alg_group['rbound'].values])
@@ -309,6 +326,58 @@ def plot_suboptimal_comparison(data, title, file_name):
     plt.show()
 
 
+def plot_quality_against_time(data, title, file_name):
+    """Plots quality against percent of time in suboptimal vs optimal"""
+    data = data[data['isOptimal'] == False]  # noqa
+    if len(data) == 0:
+        return
+
+    # bucket data by time vs optimal
+    bucket_ranges = [0.0] + np.geomspace(0.0001, data['percentTimeVsOptimal'].max(), 10)  # note: values are specific to my results
+    data['bucketedPercentTimeVsOptimal'] = pd.cut(data['percentTimeVsOptimal'], bucket_ranges)
+
+    results = DataFrame(
+        columns="percentTimeVsOptimalRange percentDeviationFromBaseline algorithmName lbound rbound".split()
+    )
+
+    for timeOverOptimal, group in data.groupby(['bucketedPercentTimeVsOptimal']):
+        alg_name = 'IW-AGRD'
+
+        # confidence
+        mean_deviation = group['percentDeviationFromBaseline'].mean()
+        deviation_list = list(group['percentDeviationFromBaseline'])
+        bound = sms.DescrStatsW(deviation_list).zconfint_mean()
+        results = add_row(results,
+                          [timeOverOptimal, mean_deviation, alg_name,
+                           abs(mean_deviation - bound[0]),
+                           abs(mean_deviation - bound[1])])
+
+    errors = [results['lbound'].values, results['rbound'].values]
+
+    pivot = results.pivot(index='percentTimeVsOptimalRange', columns='algorithmName',
+                          values='percentDeviationFromBaseline')
+    plot = pivot.plot(title=title, legend=False, yerr=errors,
+                      ecolor='black', elinewidth=1,
+                      capsize=4, capthick=1,
+                      rot=90)
+    plot.autoscale(True)
+    plot.margins(0.05)
+
+    # plot.set_xscale('log')
+    plot.set_xlabel('Bucketed Time Bound / Optimal Iteration Time')
+    x_tick_labels = ['0'] + [str(interval) for interval in results.percentTimeVsOptimalRange]
+    plot.set_xticklabels(x_tick_labels)
+    # plot.set_yscale('log')
+    plot.set_ylabel('Percent Deviation from Optimal Baseline')
+
+    pdf = PdfPages("../results/plots/" + file_name + "_iw-timing-comparison.pdf")
+    plt.savefig(pdf, format='pdf', bbox_inches='tight')
+    pdf.close()
+    plt.show()
+
+    print('debug me')
+
+
 def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero = 1):
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
     ticks += [10 ** num for num in range(num_levels_zero_above)]
@@ -324,7 +393,8 @@ def set_x_ticks(plot, data, field_name):
 
 
 if __name__ == "__main__":
-    main(['../results/grd-3-16-21_optimal_vs_suboptimal-fraction_of_path.json'],
+    main(['../results/grd-3-16-21_optimal_vs_suboptimal-fraction_of_path.json',
+          '../results/grd-3-23-21_optimal.json'],
          [
              {
                  'title': 'Uniform Gridworld',
