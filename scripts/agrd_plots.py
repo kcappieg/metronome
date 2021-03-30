@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from pandas import DataFrame
+import re
 import seaborn as sns
 import statsmodels.stats.api as sms
 from matplotlib.backends.backend_pdf import PdfPages
@@ -332,9 +333,15 @@ def plot_quality_against_time(data, title, file_name):
     if len(data) == 0:
         return
 
+    # get rid of instances where there was nothing to do. They are not informative here
+    data = data[~((data['fractionOfPath'] == 1.0) & (data['avgOptimalFractionOfPath'] == 1.0))]
+
     # bucket data by time vs optimal
-    bucket_ranges = [0.0] + np.geomspace(0.0001, data['percentTimeVsOptimal'].max(), 10)  # note: values are specific to my results
-    data['bucketedPercentTimeVsOptimal'] = pd.cut(data['percentTimeVsOptimal'], bucket_ranges)
+    # bucket_ranges = [0.0] + np.geomspace(0.0001, data['percentTimeVsOptimal'].max(), 10)  # note: values are specific to my results
+    # data['bucketedPercentTimeVsOptimal'] = pd.cut(data['percentTimeVsOptimal'], bucket_ranges)
+
+    # note: logistics wants precision 4
+    data['bucketedPercentTimeVsOptimal'] = pd.qcut(data['percentTimeVsOptimal'], q=10, precision=3)
 
     results = DataFrame(
         columns="percentTimeVsOptimalRange percentDeviationFromBaseline algorithmName lbound rbound".split()
@@ -365,7 +372,10 @@ def plot_quality_against_time(data, title, file_name):
 
     # plot.set_xscale('log')
     plot.set_xlabel('Bucketed Time Bound / Optimal Iteration Time')
-    x_tick_labels = ['0'] + [str(interval) for interval in results.percentTimeVsOptimalRange]
+    x_tick_labels = [str(interval) for interval in results.percentTimeVsOptimalRange]
+    # qcut wants the first bucket to have a negative boundary? Set it to 0
+    x_tick_labels[0] = re.sub('\((\-\d+\.\d+)', '(0.0', x_tick_labels[0])
+    plot.set_xticks(range(10))
     plot.set_xticklabels(x_tick_labels)
     # plot.set_yscale('log')
     plot.set_ylabel('Percent Deviation from Optimal Baseline')
@@ -373,12 +383,12 @@ def plot_quality_against_time(data, title, file_name):
     pdf = PdfPages("../results/plots/" + file_name + "_iw-timing-comparison.pdf")
     plt.savefig(pdf, format='pdf', bbox_inches='tight')
     pdf.close()
-    plt.show()
+    # plt.show()
 
     print('debug me')
 
 
-def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero = 1):
+def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero=1):
     ticks = [1 / (10 ** num) for num in range(num_levels_below_zero, 0, -1)]
     ticks += [10 ** num for num in range(num_levels_zero_above)]
 
