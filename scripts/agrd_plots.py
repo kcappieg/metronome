@@ -23,23 +23,13 @@ def main(paths, configs):
 
     print('--------LOAD---------')
 
-    # TODO temp data load until suboptimal is done
-    results = read_data(paths[0])
-    data = construct_data_frame(results)
-    print(len(data))
-    data = data[data['grdIterativeWidening']]  # only keep suboptimal results
-    print(len(data))
-
-    results = read_data(paths[1])
-    data = pd.concat([data, construct_data_frame(results)])
-
-    print('--------DONE LOAD---------')
     # initial load of all data
-    # results = []
-    # for path_name in paths:
-    #     results += read_data(path_name)
-    #
-    # data = construct_data_frame(results)
+    results = []
+    for path_name in paths:
+        results += read_data(path_name)
+
+    data = construct_data_frame(results)
+    print('--------DONE LOAD---------')
     for config in configs:
         title, file_name, domain_filter = itemgetter('title', 'file_name', 'domain_filter')(config)
 
@@ -50,7 +40,11 @@ def main(paths, configs):
         # plot_optimal_runtime(domain_specific_data, title, file_name)
         # plot_optimal_scatter(domain_specific_data, title, file_name)
         # plot_suboptimal_comparison(domain_specific_data, title, file_name)
+        # scatter = domain_specific_data.plot.scatter(x='fractionTimeVsOptimal', y='percentDeviationFromBaseline')
+        # scatter.set_xscale('log')
         plot_quality_against_time(domain_specific_data, title, file_name)
+
+        # plt.show()
 
 
 def prepare_data(data, domain_filter):
@@ -129,10 +123,11 @@ def extract_quality_metrics(data):
 
     # deviation from average optimal baseline. Negative means better
     deviation_from_baseline = data['fractionOfPath'] - data['avgOptimalFractionOfPath']
-    data['percentDeviationFromBaseline'] = deviation_from_baseline / data['avgOptimalFractionOfPath']
+    data['percentDeviationFromBaseline'] =\
+        (deviation_from_baseline / data['avgOptimalFractionOfPath']) * 100.0  # to make percentage, not fraction
 
-    # percent timebound / optimal iteration runtime
-    data['percentTimeVsOptimal'] = data['actionDuration'] / data['avgOptimalIterationRuntime']
+    # fraction timebound / optimal iteration runtime
+    data['fractionTimeVsOptimal'] = data['actionDuration'] / data['avgOptimalIterationRuntime']
 
     return data
 
@@ -224,7 +219,7 @@ def plot_optimal_runtime(data, title, file_name):
     pdf = PdfPages("../results/plots/" + file_name + "_agrd_runtime.pdf")
     plt.savefig(pdf, format='pdf', bbox_inches='tight')
     pdf.close()
-    plt.show()
+    # plt.show()
 
 
 def plot_optimal_scatter(data, title, file_name):
@@ -269,13 +264,16 @@ def plot_optimal_scatter(data, title, file_name):
 
     # TODO: save plot to pdf
 
-    plt.show()
+    # plt.show()
 
 
 def plot_suboptimal_comparison(data, title, file_name):
     data = data[data['isOptimal'] == False]  # noqa
     if len(data) == 0:
         return
+
+    # get rid of instances where there was nothing to do. They are not informative here
+    data = data[~((data['fractionOfPath'] == 1.0) & (data['avgOptimalFractionOfPath'] == 1.0))]
 
     results = DataFrame(
         columns="timeBound percentDeviationFromBaseline algorithmName lbound rbound".split()
@@ -286,7 +284,8 @@ def plot_suboptimal_comparison(data, title, file_name):
             # no way to compute confidence interval
             continue
 
-        alg_name = 'IW-AGRD (Depth ' + str(fields[0]) + ')'
+        alg_name = 'Depth ' + str(fields[0])
+        print(f'{alg_name}: {len(depth_group.domainPath.unique())}')
         if alg_name in alg_map:
             alg_name = alg_map[alg_name]
 
@@ -299,6 +298,18 @@ def plot_suboptimal_comparison(data, title, file_name):
                            abs(mean_deviation - bound[0]),
                            abs(mean_deviation - bound[1])])
 
+    # line for all depth bounds
+    # for duration, group in data.groupby(['actionDuration']):
+    #     alg_name = 'All'
+    #
+    #     mean_deviation = group['percentDeviationFromBaseline'].mean()
+    #     deviation_list = list(group['percentDeviationFromBaseline'])
+    #     bound = sms.DescrStatsW(deviation_list).zconfint_mean()
+    #     results = add_row(results,
+    #                       [duration / 1e6, mean_deviation, alg_name,
+    #                        abs(mean_deviation - bound[0]),
+    #                        abs(mean_deviation - bound[1])])
+
     errors = []
     for alg, alg_group in results.groupby('algorithmName'):
         errors.append([alg_group['lbound'].values, alg_group['rbound'].values])
@@ -308,7 +319,7 @@ def plot_suboptimal_comparison(data, title, file_name):
     # pivot = pivot[~pivot.index.duplicated(keep='first')]
 
     palette = sns.color_palette(n_colors=10)
-    plt_title = title
+    plt_title = 'IW-AGRD ' + title
     plot = pivot.plot(color=palette, title=plt_title, yerr=errors,
                       ecolor='black', elinewidth=1,
                       capsize=4, capthick=1
@@ -316,38 +327,28 @@ def plot_suboptimal_comparison(data, title, file_name):
                       )
     plot.autoscale(True)
     plot.margins(0.05)
+    plot.legend(title=None)
 
     plot.set_xscale('log')
-    plot.set_xlabel('Iteration Time Bounds (ms)')
+    plot.set_xlabel('Search Episode Time Bound (ms)')
     plot.set_ylabel('Percent Deviation from Optimal Baseline')
+    plot.set_yticklabels([str(label) + '%' for label in plot.get_yticks()])
 
-    pdf = PdfPages("../results/plots/" + file_name + "_iterative-widening_results.pdf")
+    pdf = PdfPages("../results/plots/" + file_name + "_iterative-widening-by-depth_results.pdf")
+    # pdf = PdfPages("../results/plots/" + file_name + "_iterative-widening-all_results.pdf")
+    # pdf = PdfPages("../results/plots/" + file_name + "_iterative-widening_results.pdf")
     plt.savefig(pdf, format='pdf', bbox_inches='tight')
     pdf.close()
-    plt.show()
+    # plt.show()
 
 
-def plot_quality_against_time(data, title, file_name):
-    """Plots quality against percent of time in suboptimal vs optimal"""
-    data = data[data['isOptimal'] == False]  # noqa
-    if len(data) == 0:
-        return
-
-    # get rid of instances where there was nothing to do. They are not informative here
-    data = data[~((data['fractionOfPath'] == 1.0) & (data['avgOptimalFractionOfPath'] == 1.0))]
-
-    # bucket data by time vs optimal
-    # bucket_ranges = [0.0] + np.geomspace(0.0001, data['percentTimeVsOptimal'].max(), 10)  # note: values are specific to my results
-    # data['bucketedPercentTimeVsOptimal'] = pd.cut(data['percentTimeVsOptimal'], bucket_ranges)
-
-    # note: logistics wants precision 4
-    data['bucketedPercentTimeVsOptimal'] = pd.qcut(data['percentTimeVsOptimal'], q=10, precision=3)
-
+def quality_against_time_helper(data, title, file_name):
+    """Common code for plotting quality against time. 2 plots: quantile and even-spaced buckets"""
     results = DataFrame(
-        columns="percentTimeVsOptimalRange percentDeviationFromBaseline algorithmName lbound rbound".split()
+        columns="fractionTimeVsOptimalRange percentDeviationFromBaseline algorithmName lbound rbound".split()
     )
 
-    for timeOverOptimal, group in data.groupby(['bucketedPercentTimeVsOptimal']):
+    for timeOverOptimal, group in data.groupby(['bucketedFractionTimeVsOptimal']):
         alg_name = 'IW-AGRD'
 
         # confidence
@@ -361,7 +362,7 @@ def plot_quality_against_time(data, title, file_name):
 
     errors = [results['lbound'].values, results['rbound'].values]
 
-    pivot = results.pivot(index='percentTimeVsOptimalRange', columns='algorithmName',
+    pivot = results.pivot(index='fractionTimeVsOptimalRange', columns='algorithmName',
                           values='percentDeviationFromBaseline')
     plot = pivot.plot(title=title, legend=False, yerr=errors,
                       ecolor='black', elinewidth=1,
@@ -371,21 +372,49 @@ def plot_quality_against_time(data, title, file_name):
     plot.margins(0.05)
 
     # plot.set_xscale('log')
-    plot.set_xlabel('Bucketed Time Bound / Optimal Iteration Time')
-    x_tick_labels = [str(interval) for interval in results.percentTimeVsOptimalRange]
+    plot.set_xlabel('Bucketed Time Bound / Optimal Tree Search Time')
+    x_tick_labels = [str(interval) for interval in results.fractionTimeVsOptimalRange]
     # qcut wants the first bucket to have a negative boundary? Set it to 0
     x_tick_labels[0] = re.sub('\((\-\d+\.\d+)', '(0.0', x_tick_labels[0])
-    plot.set_xticks(range(10))
+    plot.set_xticks(range(len(x_tick_labels)))
     plot.set_xticklabels(x_tick_labels)
     # plot.set_yscale('log')
     plot.set_ylabel('Percent Deviation from Optimal Baseline')
+    plot.set_yticklabels([str(label) + '%' for label in plot.get_yticks()])
 
-    pdf = PdfPages("../results/plots/" + file_name + "_iw-timing-comparison.pdf")
+    pdf = PdfPages(file_name)
     plt.savefig(pdf, format='pdf', bbox_inches='tight')
     pdf.close()
     # plt.show()
 
     print('debug me')
+
+
+def plot_quality_against_time(data, title, file_name):
+    """Plots quality against percent of time in suboptimal vs optimal"""
+    data = data[data['isOptimal'] == False]  # noqa
+    if len(data) == 0:
+        return
+
+    # get rid of instances where there was nothing to do. They are not informative here.
+    # Can happen for specific subject goals, even if the domain instance as a whole has meaningful interventions
+    data = data[~((data['fractionOfPath'] == 1.0) & (data['avgOptimalFractionOfPath'] == 1.0))]
+
+    quantile_data = data.copy()
+    even_bucket_data = data.copy()
+
+    quantile_bucket_count = 15
+    quantile_data['bucketedFractionTimeVsOptimal'] = pd.qcut(quantile_data['fractionTimeVsOptimal'], q=quantile_bucket_count, precision=3)
+
+    # create one bucket for < 1%. Not informative to have 8 buckets < 1%
+    # (Note: should mention lopsided distribution in paper)
+    even_buckets = [-0.1, 0.01] + [0.1 * i for i in range(1, 14)] + [even_bucket_data['fractionTimeVsOptimal'].max() + 0.001]
+    even_bucket_data['bucketedFractionTimeVsOptimal'] = pd.cut(even_bucket_data['fractionTimeVsOptimal'], bins=even_buckets, precision=3)
+
+    quality_against_time_helper(quantile_data, title + ': Quantile Buckets',
+                                "../results/plots/" + file_name + "_iw-timing-comparison-quantile.pdf")
+    quality_against_time_helper(even_bucket_data, title + ': Even Buckets',
+                                "../results/plots/" + file_name + "_iw-timing-comparison-even.pdf")
 
 
 def set_log_y_ticks(plot, num_levels_zero_above=5, num_levels_below_zero=1):
@@ -403,19 +432,18 @@ def set_x_ticks(plot, data, field_name):
 
 
 if __name__ == "__main__":
-    main(['../results/grd-3-16-21_optimal_vs_suboptimal-fraction_of_path.json',
-          '../results/grd-3-23-21_optimal.json'],
+    main(['../results/grd-3-23-21_optimal.json', '../results/grd-3-27-21_suboptimal.json'],
          [
              {
                  'title': 'Uniform Gridworld',
                  'file_name': 'uniform',
                  'domain_filter': 'grd/uniform'
              },
-             {
-                 'title': 'Rooms Gridworld',
-                 'file_name': 'rooms',
-                 'domain_filter': 'grd/rooms'
-             },
+             # {
+             #     'title': 'Rooms Gridworld',
+             #     'file_name': 'rooms',
+             #     'domain_filter': 'grd/rooms'
+             # },
              {
                  'title': 'Logistics',
                  'file_name': 'logistics',
